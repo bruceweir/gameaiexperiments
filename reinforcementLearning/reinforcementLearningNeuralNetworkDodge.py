@@ -16,7 +16,8 @@ A simple game showing how a neural network can learn q_values (state/action choi
 """
 
 from keras.models import Sequential
-from keras.layers import Dense, Conv2D, MaxPooling2D
+from keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
+from keras.callbacks import TensorBoard
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -26,13 +27,17 @@ import time
 actions = ['left', 'right', 'wait']
 width = 5
 height = 10 
+number_of_rocks = 1
 
+tensorBoard = TensorBoard(log_dir='./log', histogram_freq=0, write_graph=True, write_images=True)
 
 def learn_to_play():
 
     #Initially, the agent begins at state 0, the far left of the environment
-    agent_position = random.choice(range(width))
-    environment = update_environment(agent_position)
+    
+    characters = create_game_characters(number_of_rocks)
+    
+    environment = make_environment(characters)
     #He will move entirely randomly at first
     epsilon_greedy = 1.0
     #Each step in a single game is recorded in the game_memory
@@ -43,18 +48,18 @@ def learn_to_play():
     n_games = 0
     n_training_runs = 0
     run = True
-        
+    
     while run:
         #pick an action to perform
         action, model_q_predictions = choose_action(environment, model, epsilon_greedy)
         previous_environment = np.copy(environment)
         #update the state of the environment, and return a score and (if the agent has left the right hand edge of 
         #the environment) a termination trigger        
-        environment, agent_position, terminate_game, score = perform_action(environment, agent_position, action)        
+        environment, characters, terminate_game, score = perform_action(environment, characters, action)        
         #record the move that was taken
         store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
-        
-           
+        #print(environment)
+        #print(terminate_game)   
         if terminate_game:
                         
             #go backwards through the game history and update the q_values to 
@@ -62,32 +67,52 @@ def learn_to_play():
             update_q_values_for_this_game(score, game_memory)
             replay_memory.append(game_memory[:])
             game_memory = []
-            agent_position = random.choice(range(width))
+            characters = create_game_characters(number_of_rocks)
+            environment = make_environment(characters)
             n_games += 1
-            
-            if n_games == 10:
+            epsilon_greedy *= 0.99
+            if n_games == 500:
                 #once enough games have been played, train the network with the 
                 #game states as input data, and the measured q_values as the target
+                print('Training run: %d' % n_training_runs)
                 train_network(model, replay_memory)
                 replay_memory = []
                 n_games = 0
                 n_training_runs += 1
-                epsilon_greedy *= 0.9
-                
-                
-        
-
-        if n_training_runs == 20:
+                epsilon_greedy *= 0.98
+            
+        if n_training_runs == 1:
             run=False
-    
+
+    model.save('last_model.h5')    
     return model
             
  #       time.sleep(.1)
 
-def update_environment(agent_position):
+def create_game_characters(n_rocks=1):
+    
+    player_start = random.choice(range(width))
+    
+    character_status = {'player': player_start}
+    character_status['number_of_rocks'] = n_rocks
+    character_status['rocks'] = []
+    
+    for _ in range(n_rocks):
+        rock_start = random.choice(range(width))
+        character_status['rocks'].append([rock_start, random.choice(range(4))])    
+    
+    return character_status
+    
+def make_environment(characters):
     
     environment = np.zeros((height, width))
-    environment[height-1][agent_position] = 1
+    environment[height-1][characters['player']] = 1
+    
+    rocks = characters['rocks']
+    
+    for r in rocks:
+        environment[r[1]][r[0]] = 1
+        
     return environment
 
 
@@ -95,7 +120,12 @@ def create_neural_network():
     
     model = Sequential()
     model.add(Dense(height*width, input_shape=(height*width,)))
-    model.add(Dense(len(actions), activation='elu')) #there are 2 actions
+    model.add(Reshape((height, width, 1)))
+    model.add(Conv2D(16, (3, 3), activation='elu'))
+    model.add(Conv2D(8, (3, 3), activation='elu'))
+    model.add(Flatten())
+    model.add(Dense(int(height*width/4), activation='elu'))
+    model.add(Dense(len(actions), activation='sigmoid')) 
     model.compile(optimizer='adam',
           loss='mean_squared_error')
     
@@ -117,23 +147,45 @@ def choose_action(environment, model, epsilon_greedy=0.0):
 
 #update the state of the environment, depending upon the action taken by 
 #the agent
-def perform_action(environment, agent_position, action):
+def perform_action(environment, characters, action):
     
     termination = False
-    score = 0
+    score = 0.0
     
-    if action == 0 and agent_position > 0: #left
-        agent_position -=1
-    elif action == 1 and agent_position < width-1: #right
-        agent_position += 1
+    characters = move_rocks(characters)
     
-    if action == 1 and agent_position == width-1: #termination condition
-        termination = True
-        score = 1
+    if action == 0 and characters['player'] > 0: #left
+        characters['player'] -=1
+    elif action == 1 and characters['player'] < width-1: #right
+        characters['player'] += 1
     
-    environment = update_environment(agent_position)
-    return environment, agent_position, termination, score
+     
+    for r in characters['rocks']:
+        if r[0] == characters['player'] and r[1] == height-1:
+            termination = True
+            score = -1
+            break
+    
+    environment = make_environment(characters)
+    return environment, characters, termination, score
 
+def move_rocks(characters):
+    
+    rocks_to_remove = []
+    for r in reversed(range(len(characters['rocks']))):
+        characters['rocks'][r][1] += 1
+        if characters['rocks'][r][1] >= height:
+            rocks_to_remove.append(r)
+    
+    for r in rocks_to_remove:
+        characters['rocks'].pop(r)
+    
+    
+    while len(characters['rocks']) < characters['number_of_rocks']:
+        characters['rocks'].append([random.choice(range(width)), random.choice(range(3))])
+ 
+    return characters
+            
 """    
 Remember the state for the current step in the game, the action that was taken
 from here, and the prediction that the model made for the q_values (action choices)
@@ -170,7 +222,8 @@ def train_network(model, replay_memory):
     model.fit(x_train, y_train,
               batch_size=16,
               epochs=100,
-              verbose=True,
+              verbose=False,
+              callbacks=[tensorBoard],
               validation_data=(x_test, y_test))    
     
 
@@ -180,7 +233,6 @@ q_values which we have been measuring as we have been playing the game
 """
 def create_training_data(replay_memory):
     
-    print(replay_memory)
     x_data=[]
     y_data=[]
     for game in replay_memory:
@@ -199,30 +251,44 @@ def create_training_data(replay_memory):
 
 def play_game_using_model(model, initial_position=0):
     
-    plt.figure()
+    f = plt.figure()
+    ax = f.gca()
+    f.show()
     plt.ion()
-    
+    number_of_rocks = 2
     terminate_game = False
-    agent_position = initial_position
-    environment = update_environment(agent_position)
+    characters = create_game_characters(number_of_rocks)    
+    environment = make_environment(characters)
+    draw_environment(environment, f, ax)
     
     while not terminate_game:
-        draw_environment(environment)
-        #print(environment)
         action, _ = choose_action(environment, model)
-        environment, agent_position, terminate_game, _ = perform_action(environment, agent_position, action)        
-        time.sleep(1)
+        environment, characters, terminate_game, _ = perform_action(environment, characters, action)        
+#        draw_environment(environment, f, ax)
+        redraw_fn(environment, f, ax)
+        time.sleep(.2)
+
+    redraw_fn.initialized = False
 
 
-def draw_environment(environment):
+def draw_environment(environment, figure, axes):
     
-    plt.imshow(environment, cmap='gray')
-    plt.pause(0.01)
-    plt.show()
+    axes.imshow(environment)
+    figure.canvas.draw()
+#    plt.pause(0.01)
+#    plt.show()
     
     print(environment, end='\r\r')
     
         
     #draw_environment(environment)
+def redraw_fn(environment, figure, axes):
+    if not redraw_fn.initialized:
+        redraw_fn.im = axes.imshow(environment, animated=True)
+        redraw_fn.initialized = True
+    else:
+        redraw_fn.im.set_array(environment)
+    plt.pause(0.01)
+redraw_fn.initialized = False
     
 #main()
