@@ -45,12 +45,13 @@ def learn_to_play():
         #pick an action to perform
         action, model_q_predictions = choose_action(current_state, model, epsilon_greedy)
         previous_state = current_state
-        #update the state of the environment, and return a score and termination trigger        
-        current_state, terminate, score = perform_action(current_state, action)        
+        #update the state of the environment, and return a score and (if the agent has left the right hand edge of 
+        #the environment) a termination trigger        
+        current_state, terminate_game, score = perform_action(current_state, action)        
         #record the move that was taken
         store_action_in_game_memory(previous_state, action, model_q_predictions, game_memory)
            
-        if terminate:
+        if terminate_game:
             
             current_state = 0
             #go backwards through the game history and update the q_values to 
@@ -154,8 +155,8 @@ def store_action_in_game_memory(state, action, predicted_q_values, game_memory):
     game_memory.append(state_result)
  
     
-"""Go backwards through the game history, updating the q_value for the choice
-that was made according to the utility that was gained by this move
+"""Go backwards through the game history, updating the q_value for the action
+that was made according to the utility that was gained by this action
 i.e. For the action that scored a point, the q_value is the value of
 that point. For the step just before this, the q_value is the value of 
 the point multiplied by the discount_rate, and so on back to the first move
@@ -165,7 +166,7 @@ def update_q_values_for_this_game(score, game_memory):
 
     discount_rate = 0.97
     
-    for x in range(len(game_memory)-1, -1, -1):
+    for x in reversed(range(len(game_memory))):
         action = game_memory[x]['action']
         game_memory[x]['Q_values'][action] = score
         score *= discount_rate
