@@ -13,7 +13,7 @@ There are two actions that an agent can take for each game step: move 1
 step left, or move 1 step right
 
 At first, the agent knows nothing about the environment or even what he
-is supposed to do. He learns the results of his actions by exploring his environmet
+is supposed to do. He learns the results of his actions by exploring his environment
 
 """
 
