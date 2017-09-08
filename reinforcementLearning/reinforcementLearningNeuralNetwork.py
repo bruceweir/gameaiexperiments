@@ -152,7 +152,7 @@ def perform_action(currentState, action):
 """    
 Remember the state for the current step in the game, the action that was taken
 from here, and the prediction that the model made for the q_values (action choices)
-(if the agent moved at random)    
+(even if the agent moved at random)    
 """
 def store_action_in_game_memory(state, action, predicted_q_values, game_memory):
     state_result = {}
