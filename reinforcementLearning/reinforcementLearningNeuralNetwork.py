@@ -15,6 +15,13 @@ step left, or move 1 step right
 At first, the agent knows nothing about the environment or even what he
 is supposed to do. He learns the results of his actions by exploring his environment
 
+Usage:
+
+from reinforcementLearningNeuralNetwork import learn_to_play, play_game_using_model
+
+model = learn_to_play()
+play_game_using_model(model)
+
 """
 
 from keras.models import Sequential
