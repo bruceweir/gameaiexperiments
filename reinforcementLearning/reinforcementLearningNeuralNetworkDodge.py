@@ -17,26 +17,28 @@ A simple game showing how a neural network can learn q_values (state/action choi
 
 from keras.models import Sequential
 from keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
-from keras.callbacks import TensorBoard
+from keras.callbacks import TensorBoard, EarlyStopping
 import numpy as np
 import matplotlib.pyplot as plt
-
+import os.path
 import random
 import time
 
 actions = ['left', 'right', 'wait']
 width = 5
-height = 10 
-number_of_rocks = 1
+height = 10
 
-tensorBoard = TensorBoard(log_dir='./log', histogram_freq=0, write_graph=True, write_images=True)
+path = './log'
+num_files = len(os.listdir(path))
 
-def learn_to_play():
+tensorBoard = TensorBoard(log_dir='./log/%d'%num_files, histogram_freq=1, write_graph=True, write_images=True)
+earlyStopping = EarlyStopping(patience=3)
 
-    #Initially, the agent begins at state 0, the far left of the environment
+def learn_to_play(number_of_rocks=1):
+
     
     characters = create_game_characters(number_of_rocks)
-    
+
     environment = make_environment(characters)
     #He will move entirely randomly at first
     epsilon_greedy = 1.0
@@ -48,21 +50,23 @@ def learn_to_play():
     n_games = 0
     n_training_runs = 0
     run = True
-    
+
     while run:
         #pick an action to perform
+
         action, model_q_predictions = choose_action(environment, model, epsilon_greedy)
         previous_environment = np.copy(environment)
-        #update the state of the environment, and return a score and (if the agent has left the right hand edge of 
-        #the environment) a termination trigger        
-        environment, characters, terminate_game, score = perform_action(environment, characters, action)        
+        #update the state of the environment, and return a score and (if the agent has left the right hand edge of
+        #the environment) a termination trigger
+        environment, characters, terminate_game, score = perform_action(environment, characters, action)
         #record the move that was taken
         store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
         #print(environment)
-        #print(terminate_game)   
+        #print(terminate_game)
         if terminate_game:
-                        
-            #go backwards through the game history and update the q_values to 
+
+            print('Completed game ', n_games)
+            #go backwards through the game history and update the q_values to
             #reflect the score received
             update_q_values_for_this_game(score, game_memory)
             replay_memory.append(game_memory[:])
@@ -70,21 +74,21 @@ def learn_to_play():
             characters = create_game_characters(number_of_rocks)
             environment = make_environment(characters)
             n_games += 1
-            epsilon_greedy *= 0.99
+
             if n_games == 500:
-                #once enough games have been played, train the network with the 
+                #once enough games have been played, train the network with the
                 #game states as input data, and the measured q_values as the target
                 print('Training run: %d' % n_training_runs)
                 train_network(model, replay_memory)
                 replay_memory = []
                 n_games = 0
                 n_training_runs += 1
-                epsilon_greedy *= 0.98
-            
-        if n_training_runs == 1:
-            run=False
+                epsilon_greedy *= 0.75
 
-    model.save('last_model.h5')    
+        if n_training_runs == 10:
+            run = False
+
+    model.save('last_model.h5')
     return model
             
  #       time.sleep(.1)
@@ -120,12 +124,8 @@ def create_neural_network():
     
     model = Sequential()
     model.add(Dense(height*width, input_shape=(height*width,)))
-    model.add(Reshape((height, width, 1)))
-    model.add(Conv2D(16, (3, 3), activation='elu'))
-    model.add(Conv2D(8, (3, 3), activation='elu'))
-    model.add(Flatten())
-    model.add(Dense(int(height*width/4), activation='elu'))
-    model.add(Dense(len(actions), activation='sigmoid')) 
+    model.add(Dense(height*width, activation='elu'))
+    model.add(Dense(len(actions), activation='tanh')) 
     model.compile(optimizer='adam',
           loss='mean_squared_error')
     
@@ -150,14 +150,20 @@ def choose_action(environment, model, epsilon_greedy=0.0):
 def perform_action(environment, characters, action):
     
     termination = False
-    score = 0.0
+    score = .1
     
     characters = move_rocks(characters)
     
     if action == 0 and characters['player'] > 0: #left
         characters['player'] -=1
+    elif action == 0 and characters['player'] == 0: #left
+        characters['player'] = width-1 #loop round
     elif action == 1 and characters['player'] < width-1: #right
         characters['player'] += 1
+    elif action == 1 and characters['player'] == width-1: #right
+        characters['player'] = 0 #loop around
+        
+        
     
      
     for r in characters['rocks']:
@@ -221,10 +227,11 @@ def train_network(model, replay_memory):
 
     model.fit(x_train, y_train,
               batch_size=16,
-              epochs=100,
-              verbose=False,
-              callbacks=[tensorBoard],
-              validation_data=(x_test, y_test))    
+              epochs=20,
+              verbose=True,
+              callbacks=[tensorBoard, earlyStopping],
+              validation_data=(x_test, y_test),
+              shuffle=True)    
     
 
 """
@@ -249,13 +256,13 @@ def create_training_data(replay_memory):
     return x_train, y_train, x_test, y_test
 
 
-def play_game_using_model(model, initial_position=0):
+def play_game_using_model(model, number_of_rocks=1):
     
     f = plt.figure()
     ax = f.gca()
     f.show()
     plt.ion()
-    number_of_rocks = 2
+    
     terminate_game = False
     characters = create_game_characters(number_of_rocks)    
     environment = make_environment(characters)
@@ -266,7 +273,7 @@ def play_game_using_model(model, initial_position=0):
         environment, characters, terminate_game, _ = perform_action(environment, characters, action)        
 #        draw_environment(environment, f, ax)
         redraw_fn(environment, f, ax)
-        time.sleep(.2)
+        time.sleep(.01)
 
     redraw_fn.initialized = False
 
