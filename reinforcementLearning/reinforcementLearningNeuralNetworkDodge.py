@@ -34,6 +34,7 @@ num_files = len(os.listdir(path))
 tensorBoard = TensorBoard(log_dir='./log/%d'%num_files, histogram_freq=1, write_graph=True, write_images=True)
 earlyStopping = EarlyStopping(patience=3)
 
+
 def learn_to_play(number_of_rocks=1):
 
     
@@ -48,7 +49,12 @@ def learn_to_play(number_of_rocks=1):
     replay_memory = []
     model = create_neural_network()
     n_games = 0
+    
+    max_training_runs = 10
     n_training_runs = 0
+
+    n_turns_in_this_game=0
+    
     run = True
 
     while run:
@@ -63,7 +69,9 @@ def learn_to_play(number_of_rocks=1):
         store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
         #print(environment)
         #print(terminate_game)
-        if terminate_game:
+        n_turns_in_this_game += 1
+        
+        if terminate_game or n_turns_in_this_game == 1000:
 
             print('Completed game ', n_games)
             #go backwards through the game history and update the q_values to
@@ -74,6 +82,7 @@ def learn_to_play(number_of_rocks=1):
             characters = create_game_characters(number_of_rocks)
             environment = make_environment(characters)
             n_games += 1
+            n_turns_in_this_game=0
 
             if n_games == 500:
                 #once enough games have been played, train the network with the
@@ -83,9 +92,9 @@ def learn_to_play(number_of_rocks=1):
                 replay_memory = []
                 n_games = 0
                 n_training_runs += 1
-                epsilon_greedy *= 0.75
+                epsilon_greedy *= 0.05 ** (1/max_training_runs) # seems to help if this is down to < 0.05 by the final training run
 
-        if n_training_runs == 10:
+        if n_training_runs == max_training_runs:
             run = False
 
     model.save('last_model.h5')
@@ -124,7 +133,7 @@ def create_neural_network():
     
     model = Sequential()
     model.add(Dense(height*width, input_shape=(height*width,)))
-    model.add(Dense(height*width, activation='elu'))
+    model.add(Dense(int(height*width/3), activation='elu'))
     model.add(Dense(len(actions), activation='tanh')) 
     model.compile(optimizer='adam',
           loss='mean_squared_error')
