@@ -15,9 +15,10 @@ A simple game showing how a neural network can learn q_values (state/action choi
 
 """
 
-from keras.models import Sequential
+from keras.models import Sequential, load_model
 from keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
 from keras.callbacks import TensorBoard, EarlyStopping
+from keras import backend as K
 import numpy as np
 import matplotlib.pyplot as plt
 import os.path
@@ -32,25 +33,31 @@ path = './log'
 num_files = len(os.listdir(path))
 
 tensorBoard = TensorBoard(log_dir='./log/%d'%num_files, histogram_freq=1, write_graph=True, write_images=True)
-earlyStopping = EarlyStopping(patience=3)
+earlyStopping = EarlyStopping(monitor='loss', patience=3)
+
+if os.path.exists('gameslog.txt'):
+    os.remove('gameslog.txt')
 
 
-def learn_to_play(number_of_rocks=1):
+def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
 
     
     characters = create_game_characters(number_of_rocks)
 
     environment = make_environment(characters)
     #He will move entirely randomly at first
-    epsilon_greedy = 1.0
+    epsilon_greedy = 1#.0
     #Each step in a single game is recorded in the game_memory
     game_memory = []
     #The replay memory holds the steps of every game until a training run is needed
     replay_memory = []
-    model = create_neural_network()
+    if model_file is None:
+        model = create_neural_network()
+    else:
+        model = load_model(model_file)
     n_games = 0
     
-    max_training_runs = 10
+    #max_training_runs = max_training_runs
     n_training_runs = 0
 
     n_turns_in_this_game=0
@@ -73,7 +80,7 @@ def learn_to_play(number_of_rocks=1):
         
         if terminate_game or n_turns_in_this_game == 1000:
 
-            print('Completed game ', n_games)
+            print('Completed game ', n_games, ' in ', n_turns_in_this_game, ' steps.')
             #go backwards through the game history and update the q_values to
             #reflect the score received
             update_q_values_for_this_game(score, game_memory)
@@ -89,11 +96,15 @@ def learn_to_play(number_of_rocks=1):
                 #game states as input data, and the measured q_values as the target
                 print('Training run: %d' % n_training_runs)
                 train_network(model, replay_memory)
+                
+                plot_training_log()
+                
                 replay_memory = []
                 n_games = 0
                 n_training_runs += 1
-                epsilon_greedy *= 0.05 ** (1/max_training_runs) # seems to help if this is down to < 0.05 by the final training run
-
+                epsilon_greedy = max([epsilon_greedy - (2/max_training_runs), 0.01])#0.05 ** (1/max_training_runs) # seems to help if this is down to < 0.05 by the final training run
+                
+                
         if n_training_runs == max_training_runs:
             run = False
 
@@ -132,14 +143,19 @@ def make_environment(characters):
 def create_neural_network():
     
     model = Sequential()
-    model.add(Dense(height*width, input_shape=(height*width,)))
-    model.add(Dense(int(height*width/3), activation='elu'))
+    model.add(Dense(height*width, input_shape=(height*width,)))    
+    model.add(Dense(int(height*width), activation='elu'))    
+    model.add(Dense(int(height*width), activation='elu'))    
+    model.add(Dense(int(height*width), activation='elu'))    
+    model.add(Dense(int(height*width), activation='elu'))    
+    
     model.add(Dense(len(actions), activation='tanh')) 
     model.compile(optimizer='adam',
-          loss='mean_squared_error')
+          loss='mean_squared_error', metrics=[])
     
     return model
-    
+
+
 #Either choose the action that the model predicts is best, or a
 #random action, depending upon the value of epsilon_greedy
 def choose_action(environment, model, epsilon_greedy=0.0):
@@ -232,14 +248,13 @@ def update_q_values_for_this_game(score, game_memory):
 
 
 def train_network(model, replay_memory):
-    x_train, y_train, x_test, y_test = create_training_data(replay_memory)
+    x_train, y_train = create_training_data(replay_memory)
 
     model.fit(x_train, y_train,
               batch_size=16,
               epochs=20,
               verbose=True,
-              callbacks=[tensorBoard, earlyStopping],
-              validation_data=(x_test, y_test),
+              callbacks=[tensorBoard, earlyStopping],              
               shuffle=True)    
     
 
@@ -255,16 +270,31 @@ def create_training_data(replay_memory):
         x_data.extend([gamestep['state'] for gamestep in game])
         y_data.extend([gamestep['Q_values'] for gamestep in game])
     
-    split_position = int(0.9  * len(y_data))
     
-    x_train = np.array(x_data[:split_position])
-    x_test = np.array(x_data[split_position:])
-    y_train = np.array(y_data[:split_position])
-    y_test = np.array(y_data[split_position:])
+    x_train = np.array(x_data)
+    y_train = np.array(y_data)
     
-    return x_train, y_train, x_test, y_test
+    write_to_training_log(str(len(x_train)))
+    
+    return x_train, y_train
 
 
+def write_to_training_log(line):
+    
+    f = open('gameslog.txt', 'a', newline='\r\n')
+    f.write(line + '\r\n')
+    f.close()
+
+
+def plot_training_log():
+
+    plt.ion()                    
+    games_played = np.loadtxt('gameslog.txt')
+    plt.plot(games_played)
+    plt.show()
+    plt.pause(0.01)
+                
+    
 def play_game_using_model(model, number_of_rocks=1):
     
     f = plt.figure()
@@ -282,7 +312,7 @@ def play_game_using_model(model, number_of_rocks=1):
         environment, characters, terminate_game, _ = perform_action(environment, characters, action)        
 #        draw_environment(environment, f, ax)
         redraw_fn(environment, f, ax)
-        time.sleep(.01)
+        time.sleep(.1)
 
     redraw_fn.initialized = False
 
