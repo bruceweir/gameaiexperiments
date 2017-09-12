@@ -33,7 +33,7 @@ path = './log'
 num_files = len(os.listdir(path))
 
 tensorBoard = TensorBoard(log_dir='./log/%d'%num_files, histogram_freq=1, write_graph=True, write_images=True)
-earlyStopping = EarlyStopping(monitor='loss', patience=3)
+earlyStopping = EarlyStopping(patience=3)
 
 if os.path.exists('gameslog.txt'):
     os.remove('gameslog.txt')
@@ -51,10 +51,13 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
     game_memory = []
     #The replay memory holds the steps of every game until a training run is needed
     replay_memory = []
+    
     if model_file is None:
         model = create_neural_network()
     else:
         model = load_model(model_file)
+        epsilon_greedy = 0.01
+    
     n_games = 0
     
     #max_training_runs = max_training_runs
@@ -102,7 +105,7 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
                 replay_memory = []
                 n_games = 0
                 n_training_runs += 1
-                epsilon_greedy = max([epsilon_greedy - (2/max_training_runs), 0.01])#0.05 ** (1/max_training_runs) # seems to help if this is down to < 0.05 by the final training run
+                epsilon_greedy = max([epsilon_greedy - 0.02, 0.0001])#0.05 ** (1/max_training_runs) # seems to help if this is down to < 0.05 by the final training run
                 
                 
         if n_training_runs == max_training_runs:
@@ -248,13 +251,14 @@ def update_q_values_for_this_game(score, game_memory):
 
 
 def train_network(model, replay_memory):
-    x_train, y_train = create_training_data(replay_memory)
+    x_train, y_train, x_test, y_test = create_training_data(replay_memory)
 
     model.fit(x_train, y_train,
               batch_size=16,
               epochs=20,
               verbose=True,
-              callbacks=[tensorBoard, earlyStopping],              
+              callbacks=[tensorBoard, earlyStopping],
+              validation_data=(x_test, y_test),
               shuffle=True)    
     
 
@@ -270,13 +274,16 @@ def create_training_data(replay_memory):
         x_data.extend([gamestep['state'] for gamestep in game])
         y_data.extend([gamestep['Q_values'] for gamestep in game])
     
+    split_position = int(.9  * len(y_data))
     
-    x_train = np.array(x_data)
-    y_train = np.array(y_data)
+    x_train = np.array(x_data[:split_position])
+    x_test = np.array(x_data[split_position:])
+    y_train = np.array(y_data[:split_position])
+    y_test = np.array(y_data[split_position:])
     
-    write_to_training_log(str(len(x_train)))
+    write_to_training_log(str(len(x_train) + len(x_test)))
     
-    return x_train, y_train
+    return x_train, y_train, x_test, y_test
 
 
 def write_to_training_log(line):
