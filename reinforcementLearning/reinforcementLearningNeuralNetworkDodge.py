@@ -318,30 +318,27 @@ def play_game_using_model(model, number_of_rocks=1):
         action, _ = choose_action(environment, model)
         environment, characters, terminate_game, _ = perform_action(environment, characters, action)        
 #        draw_environment(environment, f, ax)
-        redraw_fn(environment, f, ax)
+    
+        if len(plt.get_fignums()) > 0:
+            draw_environment(environment, f, ax)
+        else:
+            terminate_game = True
+            
         time.sleep(.1)
 
-    redraw_fn.initialized = False
+    draw_environment.initialized = False
 
-
-def draw_environment(environment, figure, axes):
-    
-    axes.imshow(environment)
-    figure.canvas.draw()
-#    plt.pause(0.01)
-#    plt.show()
-    
-    print(environment, end='\r\r')
-    
-        
+   
     #draw_environment(environment)
-def redraw_fn(environment, figure, axes):
-    if not redraw_fn.initialized:
-        redraw_fn.im = axes.imshow(environment, animated=True)
-        redraw_fn.initialized = True
-    else:
-        redraw_fn.im.set_array(environment)
+def draw_environment(environment, figure, axes):
+    if not draw_environment.initialized:
+        draw_environment.im = axes.imshow(environment, animated=True)
+        draw_environment.initialized = True
+    else:        
+        if len(plt.get_fignums()) > 0:
+            draw_environment.im.set_array(environment)
+        
     plt.pause(0.01)
-redraw_fn.initialized = False
+draw_environment.initialized = False
     
 #main()
