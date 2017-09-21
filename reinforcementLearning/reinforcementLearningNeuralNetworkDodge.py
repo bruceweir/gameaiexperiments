@@ -304,6 +304,12 @@ def plot_training_log():
     
 def play_game_using_model(model, number_of_rocks=1):
     
+    def user_has_closed_figure():
+        if len(plt.get_fignums()) == 0:#check for user closing the rendering window
+            return True       
+        return False
+
+
     f = plt.figure()
     ax = f.gca()
     f.show()
@@ -317,17 +323,17 @@ def play_game_using_model(model, number_of_rocks=1):
     while not terminate_game:
         action, _ = choose_action(environment, model)
         environment, characters, terminate_game, _ = perform_action(environment, characters, action)        
-#        draw_environment(environment, f, ax)
     
-        if len(plt.get_fignums()) > 0:
-            draw_environment(environment, f, ax)
-        else:
+        if user_has_closed_figure():#check for user closing the rendering window
             terminate_game = True
+        else:
+            draw_environment(environment, f, ax)
             
         time.sleep(.1)
 
     draw_environment.initialized = False
-
+    
+    
    
     #draw_environment(environment)
 def draw_environment(environment, figure, axes):
