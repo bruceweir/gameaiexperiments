@@ -1,0 +1,9 @@
+Assuming that you have all the dependencies installed (Tensorflow, keras etc)
+then run the application using:
+
+ipython reinforcementLearningNeuralNetworkDodge.py
+
+
+This will train a neural network to play Dodge (the block at the bottom of the
+play area has to avoid the blocks falling from the top of the play area).
+It will then demonstrate the trained model's prowess.
