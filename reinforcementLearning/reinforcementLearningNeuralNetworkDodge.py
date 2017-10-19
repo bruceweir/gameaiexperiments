@@ -72,13 +72,11 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
 
         action, model_q_predictions = choose_action(environment, model, epsilon_greedy)
         previous_environment = np.copy(environment)
-        #update the state of the environment, and return a score and (if the agent has left the right hand edge of
-        #the environment) a termination trigger
+        #update the state of the environment, and return a score and (if the agent and a rock collide) a termination trigger
         environment, characters, terminate_game, score = perform_action(environment, characters, action)
         #record the move that was taken
         store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
-        #print(environment)
-        #print(terminate_game)
+        
         n_turns_in_this_game += 1
         
         if terminate_game or n_turns_in_this_game == 1000:
@@ -105,7 +103,7 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
                 replay_memory = []
                 n_games = 0
                 n_training_runs += 1
-                epsilon_greedy = max([epsilon_greedy - 0.02, 0.0001])#0.05 ** (1/max_training_runs) # seems to help if this is down to < 0.05 by the final training run
+                epsilon_greedy = max([epsilon_greedy - 0.02, 0.0001])# seems to help if this is down to < 0.05 by the final training run
                 
                 
         if n_training_runs == max_training_runs:
@@ -114,7 +112,6 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
     model.save('last_model.h5')
     return model
             
- #       time.sleep(.1)
 
 def create_game_characters(n_rocks=1):
     
@@ -320,11 +317,13 @@ def play_game_using_model(model, number_of_rocks=1):
     environment = make_environment(characters)
     draw_environment(environment, f, ax)
     
+   
     while not terminate_game:
         action, _ = choose_action(environment, model)
         environment, characters, terminate_game, _ = perform_action(environment, characters, action)        
     
-        if user_has_closed_figure():#check for user closing the rendering window
+        if user_has_closed_figure():
+            print('Figure closed by user')
             terminate_game = True
         else:
             draw_environment(environment, f, ax)
@@ -335,7 +334,6 @@ def play_game_using_model(model, number_of_rocks=1):
     
     
    
-    #draw_environment(environment)
 def draw_environment(environment, figure, axes):
     if not draw_environment.initialized:
         draw_environment.im = axes.imshow(environment, animated=True)
@@ -343,8 +341,14 @@ def draw_environment(environment, figure, axes):
     else:        
         if len(plt.get_fignums()) > 0:
             draw_environment.im.set_array(environment)
-        
+    
+    figure.canvas.draw()        
     plt.pause(0.01)
 draw_environment.initialized = False
     
-#main()
+def main():
+
+    model = learn_to_play(3, 10)
+    play_game_using_model(model, 3)
+
+if __name__ == "__main__": main()
