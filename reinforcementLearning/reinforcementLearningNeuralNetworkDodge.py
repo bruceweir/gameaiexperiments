@@ -18,7 +18,10 @@ then run the application using:
 
 ipython reinforcementLearningNeuralNetworkDodge.py
 
-Training will take about a minute when running tensorflow on a CPU
+This will train a neural network to play Dodge (the block at the bottom of the
+play area has to avoid the blocks falling from the top of the play area). This
+will take about a minute if running tensorflow on the CPU.
+It will then demonstrate the trained model's prowess.
 """
 
 from keras.models import Sequential, load_model
