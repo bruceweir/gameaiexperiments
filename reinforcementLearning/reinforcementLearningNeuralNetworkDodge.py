@@ -2,15 +2,13 @@
 """
 Created on Fri Sep  8 10:01:42 2017
 
-@author: brucew
+@author: bruce.weir@bbc.co.uk
+
+Released without restriction. Use at own risk.
 """
 
 # -*- coding: utf-8 -*-
 """
-Created on Thu Sep  7 12:51:15 2017
-
-@author: brucew
-
 A simple game showing how a neural network can learn q_values (state/action choices)
 
 Assuming that you have all the dependencies installed (Tensorflow, keras etc)
