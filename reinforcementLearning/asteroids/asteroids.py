@@ -1,4 +1,4 @@
-#copied from the asteroids code at http://knuth.luther.edu/~leekent/SamplingCS/lesson11.html
+#game logic copied from the asteroids code at http://knuth.luther.edu/~leekent/SamplingCS/lesson11.html
 
 
 from turtle import *
@@ -7,6 +7,17 @@ import tkinter
 import random
 import math
 import datetime
+
+import pyscreenshot as ImageGrab
+import numpy as np
+import scipy.misc
+import PIL
+from matplotlib import pyplot as plt
+
+import platform
+
+if platform.system() == 'Windows':
+    from grabscreen import grab_screen
 
 screenMinX = -500
 screenMinY = -500
@@ -303,8 +314,8 @@ def main():
             if intersect(asteroid,ship):
                 if len(lives) > 0:
                     if not shipHit:
-                        tkinter.messagebox.showwarning( \
-                             "Uh-Oh","You Lost a Ship!")
+                        #tkinter.messagebox.showwarning( \
+                        #     "Uh-Oh","You Lost a Ship!")
                         deadship = lives.pop()
                         deadship.ht()
                         shipHit = True
@@ -357,6 +368,45 @@ def main():
             bullets.append(bullet)
 
     screen.onkeypress(fire," ")
+
+    def get_screen_array():
+
+        screenshot = take_screenshot()
+        screenshot = screenshot.resize((128, 128), resample=PIL.Image.BILINEAR)
+        screenshot = screenshot.convert('L')
+        screen_array = np.array(list(screenshot.getdata()), dtype='uint8')
+        screen_array = np.reshape(screen_array, (128, 128, 1))
+
+        return screen_array
+
+    def take_screenshot():
+        x, y, width, height = get_asteroids_canvas_coords()
+        return ImageGrab.grab(bbox=(x, y, x+width, y+height))
+
+    def get_asteroids_canvas_coords():
+        x = root.winfo_rootx() + cv.winfo_x()
+        y = root.winfo_rooty() + cv.winfo_y()
+        width = cv.winfo_width()
+        height = cv.winfo_height()
+
+        return x, y, width, height
+
+    def windows_screen_grab():
+        x, y, width, height = get_asteroids_canvas_coords()
+        screenshot = grab_screen(region=[x, y, x+width, y+width])
+        screenshot = scipy.misc.imresize(screenshot, (128, 128))
+        screenshot = np.reshape(screenshot, (128, 128, 1))
+
+        #plt.imshow(screenshot[:,:,0], cmap='gray')
+        #plt.show()
+
+
+
+    if platform.system() == 'Windows':
+        screen.onkeypress(windows_screen_grab, 'p')
+    else:
+        screen.onkeypress(get_screen_array, "p")
+
 
     screen.listen()
     tkinter.mainloop()
