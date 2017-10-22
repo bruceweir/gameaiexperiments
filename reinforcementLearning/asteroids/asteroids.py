@@ -16,6 +16,8 @@ from matplotlib import pyplot as plt
 
 import platform
 
+from reinforcementLearningForAsteroids import *
+
 if platform.system() == 'Windows':
     from grabscreen import grab_screen
 
@@ -23,6 +25,11 @@ screenMinX = -500
 screenMinY = -500
 screenMaxX = 500
 screenMaxY = 500
+
+mode = 'Train'
+last_action = 'wait'
+first_pass = True
+model_q_predictions = [0]*len(actions)
 
 class PhotonTorpedo(RawTurtle):
     def __init__(self,canvas,x,y,direction,dx,dy):
@@ -229,6 +236,11 @@ def main():
     def play():
         # Tell all the elements of the game to move
 
+        global last_action
+        global first_pass
+        global model_q_predictions
+        result_of_the_last_action = 0
+
         start = datetime.datetime.now()
         screen.update()
 
@@ -290,6 +302,7 @@ def main():
                 score += 100
 
             scoreVal.set(str(score))
+            result_of_the_last_action += 1
 
             if asteroid.getSize() > 1:
                 dx = asteroid.getDX()
@@ -309,9 +322,11 @@ def main():
 
         shipHitAsteroids = []
         shipHit = False
+        game_over = False
 
         for asteroid in asteroids:
             if intersect(asteroid,ship):
+                result_of_the_last_action = -1
                 if len(lives) > 0:
                     if not shipHit:
                         #tkinter.messagebox.showwarning( \
@@ -321,9 +336,12 @@ def main():
                         shipHit = True
                     shipHitAsteroids.append(asteroid)
                 else:
-                    tkinter.messagebox.showwarning("Game Over", \
-                     "Your game is finished!\nPlease try again.")
-                    return
+                    if mode == 'Training':
+                        game_over = True
+                    else:
+                        tkinter.messagebox.showwarning("Game Over", \
+                        "Your game is finished!\nPlease try again.")
+                        return
 
         for asteroid in shipHitAsteroids:
             try:
@@ -341,6 +359,38 @@ def main():
 
         millis = duration.microseconds / 1000.0
 
+        if mode == 'Train' and not first_pass:
+            game_image = None
+            if platform.system == 'Windows':
+                game_image = windows_screen_grab()
+            else:
+                game_image = get_screen_array()
+
+            store_action_in_game_memory(game_image, last_action, model_q_predictions)
+
+            if len(hitasteroids) > 0 or len(shipHitAsteroids) > 0:
+                update_q_values_for_this_game(result_of_the_last_action)
+
+            if game_over:
+                train_network()
+
+
+        if mode == 'Train':
+            last_action, model_q_predictions = choose_action(game_image)
+            last_action = get_action_string(last_action)
+
+            if last_action == 'turnLeft':
+                turnLeft()
+            if last_action == 'turnRight':
+                turnRight()
+            if last_action == 'forward':
+                forward()
+            if last_action == 'fire':
+                fire()
+
+
+        first_pass = False
+
         screen.ontimer(play,int(10-millis))
 
     # Set the timer to go off the first time in 5 milliseconds
@@ -349,17 +399,11 @@ def main():
     def turnLeft():
         ship.setheading(ship.heading()+7)
 
-    screen.onkeypress(turnLeft,"a")
-
     def turnRight():
         ship.setheading(ship.heading()-7)
 
-    screen.onkeypress(turnRight,"d")
-
     def forward():
         ship.fireEngine()
-
-    screen.onkeypress(forward,"w")
 
     def fire():
         if len(bullets) < 20:
@@ -367,7 +411,12 @@ def main():
                ship.heading(),ship.getDX(),ship.getDY())
             bullets.append(bullet)
 
+
+    screen.onkeypress(turnLeft,"a")
+    screen.onkeypress(turnRight,"d")
+    screen.onkeypress(forward,"w")
     screen.onkeypress(fire," ")
+
 
     def get_screen_array():
 
