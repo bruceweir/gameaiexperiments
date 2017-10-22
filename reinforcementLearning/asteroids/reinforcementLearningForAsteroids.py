@@ -14,7 +14,7 @@ Class for handling reinforcement learning with a neural network
 """
 
 from keras.models import Sequential, load_model
-from keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
+from keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten, BatchNormalization
 from keras.callbacks import TensorBoard, EarlyStopping
 from keras import backend as K
 import numpy as np
@@ -35,7 +35,6 @@ if os.path.exists('gameslog.txt'):
 
 
 epsilon_greedy = 1
-model = create_neural_network()
 
 game_memory = []
 replay_memory = []
@@ -212,6 +211,8 @@ def create_neural_network():
           loss='mean_squared_error', metrics=[])
 
     return model
+
+model = create_neural_network()
 
 
 def write_to_training_log(line):

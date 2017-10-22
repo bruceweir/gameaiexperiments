@@ -16,10 +16,12 @@ from matplotlib import pyplot as plt
 
 import platform
 
-from reinforcementLearningForAsteroids import *
+#from reinforcementLearningForAsteroids import *
 
+using_windows = False
 if platform.system() == 'Windows':
     from grabscreen import grab_screen
+    using_windows = True
 
 screenMinX = -500
 screenMinY = -500
@@ -29,7 +31,7 @@ screenMaxY = 500
 mode = 'Train'
 last_action = 'wait'
 first_pass = True
-model_q_predictions = [0]*len(actions)
+#model_q_predictions = [0]*len(actions)
 
 class PhotonTorpedo(RawTurtle):
     def __init__(self,canvas,x,y,direction,dx,dy):
@@ -258,14 +260,6 @@ def main():
             if bullet.getLifeSpan() <= 0:
                 deadbullets.append(bullet)
 
-        for bullet in deadbullets:
-            try:
-                bullets.remove(bullet)
-            except:
-                print("didn't find bullet")
-
-            bullet.goto(-screenMinX*2, -screenMinY*2)
-            bullet.ht()
 
 
         for asteroid in asteroids:
@@ -282,6 +276,15 @@ def main():
                       asteroid.getDX())
                     asteroid.setDY(bullet.getDY() + \
                       asteroid.getDY())
+
+        for bullet in deadbullets:
+            try:
+                bullets.remove(bullet)
+            except:
+                print("didn't find bullet")
+
+            bullet.goto(-screenMinX*2, -screenMinY*2)
+            bullet.ht()
 
         for asteroid in hitasteroids:
             try:
@@ -359,23 +362,24 @@ def main():
 
         millis = duration.microseconds / 1000.0
 
-        if mode == 'Train' and not first_pass:
+        if mode == 'Train':
             game_image = None
-            if platform.system == 'Windows':
+            if using_windows:
                 game_image = windows_screen_grab()
             else:
                 game_image = get_screen_array()
 
-            store_action_in_game_memory(game_image, last_action, model_q_predictions)
+            if 0:#not first_pass:
+                store_action_in_game_memory(game_image, last_action, model_q_predictions)
 
-            if len(hitasteroids) > 0 or len(shipHitAsteroids) > 0:
-                update_q_values_for_this_game(result_of_the_last_action)
+                if len(hitasteroids) > 0 or len(shipHitAsteroids) > 0:
+                    update_q_values_for_this_game(result_of_the_last_action)
 
-            if game_over:
-                train_network()
+                if game_over:
+                    train_network()
 
 
-        if mode == 'Train':
+        if 0:#mode == 'Train':
             last_action, model_q_predictions = choose_action(game_image)
             last_action = get_action_string(last_action)
 
