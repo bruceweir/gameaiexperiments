@@ -75,7 +75,7 @@ def store_action_in_game_memory(game_image, action, predicted_q_values):
 
     global game_memory
     state_result = {}
-    state_result['state'] = list(np.copy(game_image))
+    state_result['state'] = np.copy(game_image)
     state_result['action'] = get_action_index(action)
     state_result['Q_values'] = list(predicted_q_values[:])
     game_memory.append(state_result)

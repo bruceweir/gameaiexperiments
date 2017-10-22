@@ -16,7 +16,7 @@ from matplotlib import pyplot as plt
 
 import platform
 
-#from reinforcementLearningForAsteroids import *
+from reinforcementLearningForAsteroids import *
 
 using_windows = False
 if platform.system() == 'Windows':
@@ -31,7 +31,7 @@ screenMaxY = 500
 mode = 'Train'
 last_action = 'wait'
 first_pass = True
-#model_q_predictions = [0]*len(actions)
+model_q_predictions = [0]*len(actions)
 
 class PhotonTorpedo(RawTurtle):
     def __init__(self,canvas,x,y,direction,dx,dy):
@@ -369,7 +369,7 @@ def main():
             else:
                 game_image = get_screen_array()
 
-            if 0:#not first_pass:
+            if not first_pass:
                 store_action_in_game_memory(game_image, last_action, model_q_predictions)
 
                 if len(hitasteroids) > 0 or len(shipHitAsteroids) > 0:
@@ -379,7 +379,7 @@ def main():
                     train_network()
 
 
-        if 0:#mode == 'Train':
+        if mode == 'Train':
             last_action, model_q_predictions = choose_action(game_image)
             last_action = get_action_string(last_action)
 
@@ -433,6 +433,7 @@ def main():
         return screen_array
 
     def take_screenshot():
+
         x, y, width, height = get_asteroids_canvas_coords()
         return ImageGrab.grab(bbox=(x, y, x+width, y+height))
 
@@ -445,17 +446,19 @@ def main():
         return x, y, width, height
 
     def windows_screen_grab():
+
         x, y, width, height = get_asteroids_canvas_coords()
         screenshot = grab_screen(region=[x, y, x+width, y+width])
         screenshot = scipy.misc.imresize(screenshot, (128, 128))
         screenshot = np.reshape(screenshot, (128, 128, 1))
 
+        return screenshot
         #plt.imshow(screenshot[:,:,0], cmap='gray')
         #plt.show()
 
 
 
-    if platform.system() == 'Windows':
+    if using_windows:
         screen.onkeypress(windows_screen_grab, 'p')
     else:
         screen.onkeypress(get_screen_array, "p")
