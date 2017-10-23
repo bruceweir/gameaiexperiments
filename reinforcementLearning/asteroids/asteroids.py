@@ -31,6 +31,8 @@ screenMaxY = 500
 mode = 'Train'
 last_action = 'wait'
 first_pass = True
+previous_game_image = np.zeros((128, 128, 1))
+
 model_q_predictions = [0]*len(actions)
 
 class PhotonTorpedo(RawTurtle):
@@ -220,20 +222,33 @@ def main():
 
     screen.tracer(0)
 
-    ship = SpaceShip(cv,0,0,(screenMaxX-screenMinX)/2+screenMinX,(screenMaxY-screenMinY)/2 + screenMinY)
-
-    asteroids = []
-    bullets = []
-
-    for k in range(5):
-        dx = random.random() * 6 - 3
-        dy = random.random() * 6 - 3
-        x = random.random() * (screenMaxX - screenMinX) + screenMinX
-        y = random.random() * (screenMaxY - screenMinY) + screenMinY
-
-        asteroid = Asteroid(cv,dx,dy,x,y,3)
-
-        asteroids.append(asteroid)
+    def reset_game():
+        
+        global first_pass
+        first_pass = True
+        
+        screen.clear()
+        screen.tracer(0)
+        
+        ship = SpaceShip(cv,0,0,(screenMaxX-screenMinX)/2+screenMinX,(screenMaxY-screenMinY)/2 + screenMinY)
+    
+        asteroids = []
+        bullets = []
+    
+        for k in range(5):
+            dx = random.random() * 6 - 3
+            dy = random.random() * 6 - 3
+            x = random.random() * (screenMaxX - screenMinX) + screenMinX
+            y = random.random() * (screenMaxY - screenMinY) + screenMinY
+    
+            asteroid = Asteroid(cv,dx,dy,x,y,3)
+    
+            asteroids.append(asteroid)
+        
+        return ship, asteroids, bullets
+    
+    ship, asteroids, bullets = reset_game()
+    
 
     def play():
         # Tell all the elements of the game to move
@@ -241,15 +256,16 @@ def main():
         global last_action
         global first_pass
         global model_q_predictions
+        global previous_game_image
         result_of_the_last_action = 0
-
+        
+        
         start = datetime.datetime.now()
         screen.update()
+        game_over = False
 
         if len(asteroids) == 0:
-            tkinter.messagebox.showinfo("You Win!!", \
-               "You won the game!")
-            return
+            game_over = True
 
         ship.move()
 
@@ -325,7 +341,7 @@ def main():
 
         shipHitAsteroids = []
         shipHit = False
-        game_over = False
+        
 
         for asteroid in asteroids:
             if intersect(asteroid,ship):
@@ -339,7 +355,7 @@ def main():
                         shipHit = True
                     shipHitAsteroids.append(asteroid)
                 else:
-                    if mode == 'Training':
+                    if mode == 'Train':
                         game_over = True
                     else:
                         tkinter.messagebox.showwarning("Game Over", \
@@ -369,6 +385,9 @@ def main():
             else:
                 game_image = get_screen_array()
 
+            game_image = game_image - previous_game_image
+            previous_game_image = np.copy(game_image)
+            
             if not first_pass:
                 store_action_in_game_memory(game_image, last_action, model_q_predictions)
 
@@ -376,7 +395,8 @@ def main():
                     update_q_values_for_this_game(result_of_the_last_action)
 
                 if game_over:
-                    train_network()
+                   # train_network()
+                    reset_game()
 
 
         if mode == 'Train':
@@ -410,7 +430,7 @@ def main():
         ship.fireEngine()
 
     def fire():
-        if len(bullets) < 20:
+        if len(bullets) < 5:
             bullet = PhotonTorpedo(cv,ship.xcor(),ship.ycor(), \
                ship.heading(),ship.getDX(),ship.getDY())
             bullets.append(bullet)

@@ -60,7 +60,7 @@ def choose_action(game_image):
     else:
         action = random.choice(range(len(actions)))
 
-    print('choose action ', get_action_string(action))
+    #print('choose action ', get_action_string(action))
 
     return action, model_prediction
 
@@ -71,7 +71,7 @@ from here, and the prediction that the model made for the q_values (action choic
 """
 def store_action_in_game_memory(game_image, action, predicted_q_values):
 
-    print('store_action_in_game_memory: ', action, ' ' , predicted_q_values)
+    #print('store_action_in_game_memory: ', action, ' ' , predicted_q_values)
 
     global game_memory
     state_result = {}
@@ -145,12 +145,14 @@ def train_network():
 
     model.fit(x_train, y_train,
               batch_size=16,
-              epochs=20,
+              epochs=2,
               verbose=True,
               callbacks=[tensorBoard, earlyStopping],
               validation_data=(x_test, y_test),
               shuffle=True)
 
+    clear_memory()
+    
 """
 
         action, model_q_predictions = choose_action(environment, model, epsilon_greedy)
@@ -196,6 +198,12 @@ def train_network():
     return model
 """
 
+def clear_memory():
+    global replay_memory, game_memory
+    
+    replay_memory = []
+    game_memory = []
+    
 
 def create_neural_network():
 
@@ -204,6 +212,7 @@ def create_neural_network():
     model.add(BatchNormalization())
     model.add(Conv2D(16, (28, 28), activation='tanh'))
     model.add(BatchNormalization())
+    model.add(Flatten())
     model.add(Dense(64, activation='elu'))
     model.add(Dense(64, activation='elu'))
     model.add(Dense(len(actions), activation='tanh'))
