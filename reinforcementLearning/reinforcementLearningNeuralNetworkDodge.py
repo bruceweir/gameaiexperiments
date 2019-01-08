@@ -2,7 +2,7 @@
 """
 Created on Fri Sep  8 10:01:42 2017
 
-@author: bruce.weir@bbc.co.uk
+@author: bruceweir1.bw@googlemail.com
 
 Released without restriction. Use at own risk.
 """
