@@ -22,15 +22,18 @@ will take about a minute if running tensorflow on the CPU.
 It will then demonstrate the trained model's prowess.
 """
 
-from keras.models import Sequential, load_model
-from keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
-from keras.callbacks import TensorBoard, EarlyStopping
-from keras import backend as K
+from tensorflow.python.keras.models import Sequential, load_model
+from tensorflow.python.keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
+from tensorflow.python.keras.callbacks import TensorBoard, EarlyStopping
+from tensorflow.python.keras import backend as K
 import numpy as np
 import matplotlib.pyplot as plt
 import os.path
 import random
 import time
+import termplot
+
+draw_graphics_with_matplot = True #set this to False if you are running on a terminal with no graphic support
 
 actions = ['left', 'right', 'wait']
 width = 5
@@ -299,11 +302,17 @@ def write_to_training_log(line):
 
 def plot_training_log():
 
-    plt.ion()
     games_played = np.loadtxt('gameslog.txt')
-    plt.plot(games_played)
-    plt.show()
-    plt.pause(0.01)
+
+    if draw_graphics_with_matplot:
+
+        plt.ion()
+        plt.plot(games_played)
+        plt.show()
+        plt.pause(0.01)
+    else:
+        if len(games_played.shape) > 0:
+            termplot.plot(games_played)
 
 
 def play_game_using_model(model, number_of_rocks=1):
@@ -313,27 +322,35 @@ def play_game_using_model(model, number_of_rocks=1):
             return True
         return False
 
-
-    f = plt.figure()
-    ax = f.gca()
-    f.show()
-    plt.ion()
+    if draw_graphics_with_matplot:
+        f = plt.figure()
+        ax = f.gca()
+        f.show()
+        plt.ion()
 
     terminate_game = False
     characters = create_game_characters(number_of_rocks)
     environment = make_environment(characters)
-    draw_environment(environment, f, ax)
-
+    
+    if draw_graphics_with_matplot:
+        draw_environment(environment, f, ax)
+    else:
+        print(environment)
 
     while not terminate_game:
         action, _ = choose_action(environment, model)
         environment, characters, terminate_game, _ = perform_action(environment, characters, action)
 
-        if user_has_closed_figure():
-            print('Figure closed by user')
-            terminate_game = True
+        if draw_graphics_with_matplot:
+            if user_has_closed_figure():
+                print('Figure closed by user')
+                terminate_game = True
+            else:
+                draw_environment(environment, f, ax)
+
         else:
-            draw_environment(environment, f, ax)
+            print(environment)
+            print()
 
         time.sleep(.1)
 
