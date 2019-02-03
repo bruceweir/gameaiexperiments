@@ -56,7 +56,7 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
 
     environment = make_environment(characters)
     #He will move entirely randomly at first
-    epsilon_greedy = 1#.0
+    epsilon_greedy = .33
     #Each step in a single game is recorded in the game_memory
     game_memory = []
     #The replay memory holds the steps of every game until a training run is needed
@@ -75,6 +75,7 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
 
     n_turns_in_this_game=0
 
+    number_of_games_to_play = 25
     run = True
 
     while run:
@@ -102,10 +103,10 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
             n_games += 1
             n_turns_in_this_game=0
 
-            if n_games == 500:
+            if n_games == number_of_games_to_play:
                 #once enough games have been played, train the network with the
                 #game states as input data, and the measured q_values as the target
-                print('Training run: %d' % n_training_runs)
+                print('Training run: %d, epsilon_greedy: %f' % (n_training_runs, epsilon_greedy))
                 train_network(model, replay_memory)
 
                 plot_training_log()
@@ -154,11 +155,6 @@ def create_neural_network():
 
     model = Sequential()
     model.add(Dense(height*width, input_shape=(height*width,)))
-    model.add(Dense(int(height*width), activation='elu'))
-    model.add(Dense(int(height*width), activation='elu'))
-    model.add(Dense(int(height*width), activation='elu'))
-    model.add(Dense(int(height*width), activation='elu'))
-
     model.add(Dense(len(actions), activation='tanh'))
     model.compile(optimizer='adam',
           loss='mean_squared_error', metrics=[])
@@ -249,11 +245,13 @@ of the game
 """
 def update_q_values_for_this_game(score, game_memory):
 
-    discount_rate = 0.97
+    discount_rate = 0.5
+
+    gamma = 0.9
 
     for x in reversed(range(len(game_memory))):
         action = game_memory[x]['action']
-        game_memory[x]['Q_values'][action] = score
+        game_memory[x]['Q_values'][action] = (gamma * score) + ((1.0-gamma) * game_memory[x]['Q_values'][action])
         score *= discount_rate
 
 
@@ -331,7 +329,7 @@ def play_game_using_model(model, number_of_rocks=1):
     terminate_game = False
     characters = create_game_characters(number_of_rocks)
     environment = make_environment(characters)
-    
+
     if draw_graphics_with_matplot:
         draw_environment(environment, f, ax)
     else:
@@ -372,7 +370,7 @@ draw_environment.initialized = False
 
 def main():
 
-    model = learn_to_play(3, 10)
+    model = learn_to_play(3, 50)
     play_game_using_model(model, 3)
 
 if __name__ == "__main__": main()
