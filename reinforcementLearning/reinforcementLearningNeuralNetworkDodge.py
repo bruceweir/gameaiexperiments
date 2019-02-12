@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+import termplot
+import time
+import random
+import os.path
+import matplotlib.pyplot as plt
+import numpy as np
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.callbacks import TensorBoard, EarlyStopping
+from tensorflow.python.keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
+from tensorflow.python.keras.models import Sequential, load_model
 """
 Created on Fri Sep  8 10:01:42 2017
 
@@ -22,18 +32,9 @@ will take about a minute if running tensorflow on the CPU.
 It will then demonstrate the trained model's prowess.
 """
 
-from tensorflow.python.keras.models import Sequential, load_model
-from tensorflow.python.keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
-from tensorflow.python.keras.callbacks import TensorBoard, EarlyStopping
-from tensorflow.python.keras import backend as K
-import numpy as np
-import matplotlib.pyplot as plt
-import os.path
-import random
-import time
-import termplot
 
-draw_graphics_with_matplot = True #set this to False if you are running on a terminal with no graphic support
+# set this to False if you are running on a terminal with no graphic support
+draw_graphics_with_matplot = True
 
 actions = ['left', 'right', 'wait']
 width = 5
@@ -42,7 +43,8 @@ height = 10
 path = './log'
 num_files = len(os.listdir(path))
 
-tensorBoard = TensorBoard(log_dir='./log/%d'%num_files, histogram_freq=1, write_graph=True, write_images=True)
+tensorBoard = TensorBoard(log_dir='./log/%d' % num_files,
+                          histogram_freq=1, write_graph=True, write_images=True)
 earlyStopping = EarlyStopping(patience=3)
 
 if os.path.exists('gameslog.txt'):
@@ -51,15 +53,14 @@ if os.path.exists('gameslog.txt'):
 
 def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
 
-
     characters = create_game_characters(number_of_rocks)
 
     environment = make_environment(characters)
-    #He will move entirely randomly at first
+    # He will move entirely randomly at first
     epsilon_greedy = .33
-    #Each step in a single game is recorded in the game_memory
+    # Each step in a single game is recorded in the game_memory
     game_memory = []
-    #The replay memory holds the steps of every game until a training run is needed
+    # The replay memory holds the steps of every game until a training run is needed
     replay_memory = []
 
     if model_file is None:
@@ -73,40 +74,45 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
     #max_training_runs = max_training_runs
     n_training_runs = 0
 
-    n_turns_in_this_game=0
+    n_turns_in_this_game = 0
 
     number_of_games_to_play = 25
     run = True
 
     while run:
-        #pick an action to perform
+        # pick an action to perform
 
-        action, model_q_predictions = choose_action(environment, model, epsilon_greedy)
+        action, model_q_predictions = choose_action(
+            environment, model, epsilon_greedy)
         previous_environment = np.copy(environment)
-        #update the state of the environment, and return a score and (if the agent and a rock collide) a termination trigger
-        environment, characters, terminate_game, score = perform_action(environment, characters, action)
-        #record the move that was taken
-        store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
+        # update the state of the environment, and return a score and (if the agent and a rock collide) a termination trigger
+        environment, characters, terminate_game, score = perform_action(
+            environment, characters, action)
+        # record the move that was taken
+        store_action_in_game_memory(
+            previous_environment, action, model_q_predictions, game_memory)
 
         n_turns_in_this_game += 1
 
         if terminate_game or n_turns_in_this_game == 1000:
 
-            print('Completed game ', n_games, ' in ', n_turns_in_this_game, ' steps.')
-            #go backwards through the game history and update the q_values to
-            #reflect the score received
+            print('Completed game ', n_games, ' in ',
+                  n_turns_in_this_game, ' steps.')
+            # go backwards through the game history and update the q_values to
+            # reflect the score received
             update_q_values_for_this_game(score, game_memory)
             replay_memory.append(game_memory[:])
             game_memory = []
             characters = create_game_characters(number_of_rocks)
             environment = make_environment(characters)
             n_games += 1
-            n_turns_in_this_game=0
+            n_turns_in_this_game = 0
 
             if n_games == number_of_games_to_play:
-                #once enough games have been played, train the network with the
-                #game states as input data, and the measured q_values as the target
-                print('Training run: %d, epsilon_greedy: %f' % (n_training_runs, epsilon_greedy))
+                # once enough games have been played, train the network with the
+                # game states as input data, and the measured q_values as the target
+                print('Training run: %d, epsilon_greedy: %f' %
+                      (n_training_runs, epsilon_greedy))
                 train_network(model, replay_memory)
 
                 plot_training_log()
@@ -114,8 +120,8 @@ def learn_to_play(number_of_rocks=1, max_training_runs=100, model_file=None):
                 replay_memory = []
                 n_games = 0
                 n_training_runs += 1
-                epsilon_greedy = max([epsilon_greedy - 0.02, 0.0001])# seems to help if this is down to < 0.05 by the final training run
-
+                # seems to help if this is down to < 0.05 by the final training run
+                epsilon_greedy = max([epsilon_greedy - 0.02, 0.0001])
 
         if n_training_runs == max_training_runs:
             run = False
@@ -138,6 +144,7 @@ def create_game_characters(n_rocks=1):
 
     return character_status
 
+
 def make_environment(characters):
 
     environment = np.zeros((height, width))
@@ -157,17 +164,18 @@ def create_neural_network():
     model.add(Dense(height*width, input_shape=(height*width,)))
     model.add(Dense(len(actions), activation='tanh'))
     model.compile(optimizer='adam',
-          loss='mean_squared_error', metrics=[])
+                  loss='mean_squared_error', metrics=[])
 
     return model
 
 
-#Either choose the action that the model predicts is best, or a
-#random action, depending upon the value of epsilon_greedy
+# Either choose the action that the model predicts is best, or a
+# random action, depending upon the value of epsilon_greedy
 def choose_action(environment, model, epsilon_greedy=0.0):
 
     action = 0
-    model_prediction = list(model.predict(np.array([environment.reshape(width*height)]))[0])
+    model_prediction = list(model.predict(
+        np.array([environment.reshape(width*height)]))[0])
 
     if random.random() > epsilon_greedy:
         action = np.argmax(model_prediction)
@@ -176,8 +184,10 @@ def choose_action(environment, model, epsilon_greedy=0.0):
 
     return action, model_prediction
 
-#update the state of the environment, depending upon the action taken by
-#the agent
+# update the state of the environment, depending upon the action taken by
+# the agent
+
+
 def perform_action(environment, characters, action):
 
     termination = False
@@ -185,17 +195,14 @@ def perform_action(environment, characters, action):
 
     characters = move_rocks(characters)
 
-    if action == 0 and characters['player'] > 0: #left
-        characters['player'] -=1
-    elif action == 0 and characters['player'] == 0: #left
-        characters['player'] = width-1 #loop round
-    elif action == 1 and characters['player'] < width-1: #right
+    if action == 0 and characters['player'] > 0:  # left
+        characters['player'] -= 1
+    elif action == 0 and characters['player'] == 0:  # left
+        characters['player'] = width-1  # loop round
+    elif action == 1 and characters['player'] < width-1:  # right
         characters['player'] += 1
-    elif action == 1 and characters['player'] == width-1: #right
-        characters['player'] = 0 #loop around
-
-
-
+    elif action == 1 and characters['player'] == width-1:  # right
+        characters['player'] = 0  # loop around
 
     for r in characters['rocks']:
         if r[0] == characters['player'] and r[1] == height-1:
@@ -205,6 +212,7 @@ def perform_action(environment, characters, action):
 
     environment = make_environment(characters)
     return environment, characters, termination, score
+
 
 def move_rocks(characters):
 
@@ -217,17 +225,20 @@ def move_rocks(characters):
     for r in rocks_to_remove:
         characters['rocks'].pop(r)
 
-
     while len(characters['rocks']) < characters['number_of_rocks']:
-        characters['rocks'].append([random.choice(range(width)), random.choice(range(3))])
+        characters['rocks'].append(
+            [random.choice(range(width)), random.choice(range(3))])
 
     return characters
+
 
 """
 Remember the state for the current step in the game, the action that was taken
 from here, and the prediction that the model made for the q_values (action choices)
 (if the agent moved at random)
 """
+
+
 def store_action_in_game_memory(environment, action, predicted_q_values, game_memory):
     state_result = {}
     state_result['state'] = list(np.copy(environment.reshape(width*height)))
@@ -243,6 +254,8 @@ that point. For the step just before this, the q_value is the value of
 the point multiplied by the discount_rate, and so on back to the first move
 of the game
 """
+
+
 def update_q_values_for_this_game(score, game_memory):
 
     discount_rate = 0.5
@@ -251,7 +264,8 @@ def update_q_values_for_this_game(score, game_memory):
 
     for x in reversed(range(len(game_memory))):
         action = game_memory[x]['action']
-        game_memory[x]['Q_values'][action] = (gamma * score) + ((1.0-gamma) * game_memory[x]['Q_values'][action])
+        game_memory[x]['Q_values'][action] = (
+            gamma * score) + ((1.0-gamma) * game_memory[x]['Q_values'][action])
         score *= discount_rate
 
 
@@ -271,15 +285,17 @@ def train_network(model, replay_memory):
 The training inputs are the game state and target outputs are the
 q_values which we have been measuring as we have been playing the game
 """
+
+
 def create_training_data(replay_memory):
 
-    x_data=[]
-    y_data=[]
+    x_data = []
+    y_data = []
     for game in replay_memory:
         x_data.extend([gamestep['state'] for gamestep in game])
         y_data.extend([gamestep['Q_values'] for gamestep in game])
 
-    split_position = int(.9  * len(y_data))
+    split_position = int(.9 * len(y_data))
 
     x_train = np.array(x_data[:split_position])
     x_test = np.array(x_data[split_position:])
@@ -316,7 +332,7 @@ def plot_training_log():
 def play_game_using_model(model, number_of_rocks=1):
 
     def user_has_closed_figure():
-        if len(plt.get_fignums()) == 0:#check for user closing the rendering window
+        if len(plt.get_fignums()) == 0:  # check for user closing the rendering window
             return True
         return False
 
@@ -337,7 +353,8 @@ def play_game_using_model(model, number_of_rocks=1):
 
     while not terminate_game:
         action, _ = choose_action(environment, model)
-        environment, characters, terminate_game, _ = perform_action(environment, characters, action)
+        environment, characters, terminate_game, _ = perform_action(
+            environment, characters, action)
 
         if draw_graphics_with_matplot:
             if user_has_closed_figure():
@@ -355,7 +372,6 @@ def play_game_using_model(model, number_of_rocks=1):
     draw_environment.initialized = False
 
 
-
 def draw_environment(environment, figure, axes):
     if not draw_environment.initialized:
         draw_environment.im = axes.imshow(environment, animated=True)
@@ -366,11 +382,16 @@ def draw_environment(environment, figure, axes):
 
     figure.canvas.draw()
     plt.pause(0.01)
+
+
 draw_environment.initialized = False
+
 
 def main():
 
     model = learn_to_play(3, 50)
     play_game_using_model(model, 3)
 
-if __name__ == "__main__": main()
+
+if __name__ == "__main__":
+    main()
