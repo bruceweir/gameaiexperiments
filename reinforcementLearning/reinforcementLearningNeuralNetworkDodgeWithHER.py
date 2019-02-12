@@ -29,7 +29,9 @@ ipython reinforcementLearningNeuralNetworkDodge.py
 
 This will train a neural network to search for a square in the play area
 """
-
+"""
+WORK IN PROGRESS - NOT YET FULLY FUNCTIONAL
+"""
 
 # set this to False if you are running on a terminal with no graphic support
 draw_graphics_with_matplot = True
