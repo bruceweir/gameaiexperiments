@@ -34,15 +34,20 @@ WORK IN PROGRESS - NOT YET FULLY FUNCTIONAL
 """
 
 # set this to False if you are running on a terminal with no graphic support
-draw_graphics_with_matplot = True
+draw_graphics_with_matplot = False
+
+if draw_graphics_with_matplot:
+        fig = plt.figure()
+        axes = fig.gca()
+        fig.show()
+        plt.ion()
+
 np.set_printoptions(edgeitems=30, linewidth=100000, formatter=dict(float=lambda x: "%.3g" % x))
 
 actions = ['left', 'right', 'up', 'down']
-player_position = [0, 0]
-target_position = [0, 0]
 
-width = 5
-height = 5
+width = 3
+height = 3
 
 path = './log'
 num_files = len(os.listdir(path))
@@ -57,9 +62,11 @@ if os.path.exists('gameslog.txt'):
 
 def learn_to_play(max_training_runs=100, model_file=None):
 
-    create_game_characters()
+    (player_position, target_position) = generate_start_positions()
 
-    environment = make_environment()
+    initial_target_position = target_position
+
+    environment = make_environment(player_position, target_position)
     # He will move entirely randomly at first
     epsilon_greedy = 1
     # Each step in a single game is recorded in the game_memory
@@ -75,12 +82,11 @@ def learn_to_play(max_training_runs=100, model_file=None):
 
     n_games = 0
 
-    #max_training_runs = max_training_runs
     n_training_runs = 0
 
     n_turns_in_this_game = 0
 
-    number_of_games_to_play = 25
+    number_of_games_to_play_before_training_run = 50
     run = True
 
     while run:
@@ -89,16 +95,24 @@ def learn_to_play(max_training_runs=100, model_file=None):
         action, model_q_predictions = choose_action(environment, model, epsilon_greedy)
         previous_environment = np.copy(environment)
 
-        # update the state of the environment, and return a score and (if the agent reaches the target, or has completed its max number of steps) a termination trigger
-        environment, terminate_game, score = perform_action(environment, action)
+        # update the state of the environment, and return a score and (if the agent reaches
+        # the target, or has completed its max number of steps) a termination trigger
+        player_position, terminate_game, score = perform_action(player_position, target_position, action)
 
-        draw_array_as_string(environment)
+        environment = make_environment(player_position, target_position)
+
+        draw_array(environment)
+
         # record the move that was taken
         store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
 
         n_turns_in_this_game += 1
 
-        if terminate_game or n_turns_in_this_game == 20:
+        if n_turns_in_this_game == 8:
+            terminate_game = True
+            score = -0.1
+
+        if terminate_game:
 
             print('Completed game ', n_games, ' in ',
                   n_turns_in_this_game, ' steps.')
@@ -107,12 +121,14 @@ def learn_to_play(max_training_runs=100, model_file=None):
             update_q_values_for_this_game(score, game_memory)
             replay_memory.append(game_memory[:])
             game_memory = []
-            create_game_characters()
-            environment = make_environment()
+
+            (player_position, target_position) = generate_start_positions()
+            environment = make_environment(player_position, target_position)
+
             n_games += 1
             n_turns_in_this_game = 0
 
-            if n_games == number_of_games_to_play:
+            if n_games == number_of_games_to_play_before_training_run:
                 # once enough games have been played, train the network with the
                 # game states as input data, and the measured q_values as the target
                 print('Training run: %d, epsilon_greedy: %f' %
@@ -134,34 +150,34 @@ def learn_to_play(max_training_runs=100, model_file=None):
     return model
 
 
-def create_game_characters():
-
-    global player_position, target_position
+def generate_start_positions():
 
     player_position = [random.choice(range(width)), random.choice(range(height))]
+    target_position = [random.choice(range(width)), random.choice(range(height))]
 
     while target_position == player_position:
         target_position = [random.choice(range(width)), random.choice(range(height))]
 
+    return (player_position, target_position)
 
-def make_environment():
 
-    global player_position, target_position
- 
+def make_environment(player_position, target_position):
+
     environment = np.zeros((height, width))
 
     environment[player_position[0]][player_position[1]] = 1
 
-    environment[target_position[0]][target_position[1]] = .5
-        
+    environment[target_position[0]][target_position[1]] = -1
+
     return environment
 
 
-def draw_array_as_string(environment):
+def draw_array(environment):
 
-    string_array = np.full((width, height), [' '], dtype=str)
-    string_array[player_position[0]][player_position[1]] = 'p'
-    string_array[target_position[0]][target_position[1]] = 'X'
+    string_array = np.copy(environment)
+    string_array = np.where(string_array == 1, 'p', string_array)
+    string_array = np.where(string_array == '-1.0', 'X', string_array)
+    string_array = np.where(string_array == '0.0', '', string_array)
     print(string_array)
     print()
 
@@ -169,7 +185,10 @@ def draw_array_as_string(environment):
 def create_neural_network():
 
     model = Sequential()
-    model.add(Dense(height*width*4, input_shape=(height*width,)))
+    model.add(Dense(8, input_shape=(height*width,), activation='tanh'))
+    
+    #model.add(Dense(height*width/3, input_shape=(height*width,), activation='elu'))
+    # model.add(Dense(height*width/4, input_shape=(height*width,), activation='tanh'))
     model.add(Dense(len(actions), activation='tanh'))
     model.compile(optimizer='adam',
                   loss='mean_squared_error', metrics=[])
@@ -195,29 +214,49 @@ def choose_action(environment, model, epsilon_greedy=0.0):
 # the agent
 
 
-def perform_action(environment, action):
-
-    global player_position, target_position
+def perform_action(player_position, target_position, action):
 
     termination = False
-    score = -1
+    score = 0
 
-    if action == 0 and player_position[0] > 0:  # left
-        player_position[0] -= 1
-    elif action == 1 and player_position[0] < width-1:  # right
-        player_position[0] += 1
-    elif action == 2 and player_position[1] < height-1:  # up
-        player_position[1] += 1
-    elif action == 3 and player_position[1] > 0: #down
-        player_position[1] -= 1
+    if action == 0:
+        if player_position[1] > 0:  # left
+            player_position[1] -= 1
+        else:
+            score = -1
+            print('************COLLISION*****************')
+            termination = True
+
+    elif action == 1:
+        if player_position[1] < width-1:  # right
+            player_position[1] += 1
+        else:
+            score = -1
+            print('************COLLISION*****************')            
+            termination = True
+
+    elif action == 2:
+        if player_position[0] > 0:  # up
+            player_position[0] -= 1
+        else:
+            score = -1
+            print('************COLLISION*****************')
+            termination = True
+
+    elif action == 3:
+        if player_position[0] < height-1:  # down
+            player_position[0] += 1
+        else:
+            score = -1
+            print('************COLLISION*****************')
+            termination = True
 
     if player_position == target_position:
         termination = True
+        print('!!!!!!!!!SUCCESS!!!!!!!!!')
         score = 1
 
-    environment = make_environment()
-    return environment, termination, score
-
+    return player_position, termination, score
 
 
 """
@@ -248,7 +287,7 @@ def update_q_values_for_this_game(score, game_memory):
 
     discount_rate = 0.9
 
-    gamma = 0.9
+    gamma = 0.33
 
     for x in reversed(range(len(game_memory))):
         action = game_memory[x]['action']
@@ -331,24 +370,25 @@ def play_game_using_model(model):
         plt.ion()
 
     terminate_game = False
-    create_game_characters()
-    environment = make_environment()
+    (player_position, target_position) = generate_start_positions()
+    environment = make_environment(player_position, target_position)
 
     if draw_graphics_with_matplot:
-        draw_environment(environment, f, ax)
+        draw_environment(environment, fig, axes)
     else:
         print(environment)
 
     while not terminate_game:
         action, _ = choose_action(environment, model)
-        environment, terminate_game, _ = perform_action(environment, action)
+        player_position, terminate_game, score = perform_action(player_position, target_position, action)
+        environment = make_environment(player_position, target_position)
 
         if draw_graphics_with_matplot:
             if user_has_closed_figure():
                 print('Figure closed by user')
                 terminate_game = True
             else:
-                draw_environment(environment, f, ax)
+                draw_environment(environment, fig, axes)
 
         else:
             print(environment)
@@ -360,6 +400,7 @@ def play_game_using_model(model):
 
 
 def draw_environment(environment, figure, axes):
+
     if not draw_environment.initialized:
         draw_environment.im = axes.imshow(environment, animated=True)
         draw_environment.initialized = True
@@ -368,7 +409,7 @@ def draw_environment(environment, figure, axes):
             draw_environment.im.set_array(environment)
 
     figure.canvas.draw()
-    plt.pause(0.01)
+    plt.show()
 
 
 draw_environment.initialized = False
