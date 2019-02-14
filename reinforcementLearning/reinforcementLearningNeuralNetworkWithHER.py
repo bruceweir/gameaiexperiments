@@ -25,7 +25,7 @@ Hindsight Experience Replay - https://arxiv.org/pdf/1707.01495.pdf
 Assuming that you have all the dependencies installed (Tensorflow, keras etc)
 then run the application using:
 
-ipython reinforcementLearningNeuralNetworkDodge.py
+ipython reinforcementLearningNeuralNetworkWithHER.py
 
 This will train a neural network to search for a square in the play area
 """
@@ -46,8 +46,8 @@ np.set_printoptions(edgeitems=30, linewidth=100000, formatter=dict(float=lambda 
 
 actions = ['left', 'right', 'up', 'down']
 
-width = 3
-height = 3
+width = 5
+height = 5
 
 path = './log'
 num_files = len(os.listdir(path))
@@ -101,16 +101,17 @@ def learn_to_play(max_training_runs=100, model_file=None):
 
         environment = make_environment(player_position, target_position)
 
-        draw_array(environment)
+        # draw_array(environment)
 
         # record the move that was taken
         store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
 
         n_turns_in_this_game += 1
 
-        if n_turns_in_this_game == 8:
+        if n_turns_in_this_game == 25:
             terminate_game = True
-            score = -0.1
+            score = -0.5
+            print("***********Failed************")
 
         if terminate_game:
 
@@ -163,7 +164,7 @@ def generate_start_positions():
 
 def make_environment(player_position, target_position):
 
-    environment = np.zeros((height, width))
+    environment = np.zeros((width, height))
 
     environment[player_position[0]][player_position[1]] = 1
 
@@ -185,10 +186,11 @@ def draw_array(environment):
 def create_neural_network():
 
     model = Sequential()
-    model.add(Dense(8, input_shape=(height*width,), activation='tanh'))
+    model.add(Conv2D(filters=12, kernel_size=(width, height), input_shape=(width, height, 1), activation='tanh'))
     
     #model.add(Dense(height*width/3, input_shape=(height*width,), activation='elu'))
-    # model.add(Dense(height*width/4, input_shape=(height*width,), activation='tanh'))
+    model.add(Dense(height*width/4, input_shape=(height*width,), activation='tanh'))
+    model.add(Dropout(rate=0.2))
     model.add(Dense(len(actions), activation='tanh'))
     model.compile(optimizer='adam',
                   loss='mean_squared_error', metrics=[])
@@ -201,7 +203,8 @@ def create_neural_network():
 def choose_action(environment, model, epsilon_greedy=0.0):
 
     action = 0
-    model_prediction = list(model.predict(np.array([environment.reshape(width*height)]))[0])
+    # model_prediction = list(model.predict(np.array([environment.reshape(width, height, 1)]))[0][0][0])
+    model_prediction = model.predict(environment.reshape(1, width, height, 1))[0][0][0]  # np.array([environment.reshape(width, height, 1)]))[0])
 
     if random.random() > epsilon_greedy:
         action = np.argmax(model_prediction)
@@ -268,7 +271,7 @@ from here, and the prediction that the model made for the q_values (action choic
 
 def store_action_in_game_memory(environment, action, predicted_q_values, game_memory):
     state_result = {}
-    state_result['state'] = list(np.copy(environment.reshape(width*height)))
+    state_result['state'] = np.copy(environment)
     state_result['action'] = action
     state_result['Q_values'] = list(predicted_q_values[:])
     game_memory.append(state_result)
@@ -291,6 +294,9 @@ def update_q_values_for_this_game(score, game_memory):
 
     for x in reversed(range(len(game_memory))):
         action = game_memory[x]['action']
+
+        # print(game_memory[x])
+
         game_memory[x]['Q_values'][action] = (
             gamma * score) + ((1.0-gamma) * game_memory[x]['Q_values'][action])
         score *= discount_rate
@@ -301,7 +307,7 @@ def train_network(model, replay_memory):
 
     model.fit(x_train, y_train,
               batch_size=50,
-              epochs=20,
+              epochs=40,
               verbose=True,
               callbacks=[tensorBoard, earlyStopping],
               validation_data=(x_test, y_test),
@@ -325,9 +331,23 @@ def create_training_data(replay_memory):
     split_position = int(.9 * len(y_data))
 
     x_train = np.array(x_data[:split_position])
+    print("x_train.shape: ", x_train.shape)
+    x_train = x_train.reshape(len(x_train), width, height, 1)
+    print("x_train.shape: ", x_train.shape)
+    
     x_test = np.array(x_data[split_position:])
+    print("x_test.shape: ", x_test.shape)
+    x_test = x_test.reshape(len(x_test), width, height, 1)
+    print("x_test.shape: ", x_test.shape)
+    
     y_train = np.array(y_data[:split_position])
+    y_train = y_train.reshape(len(y_train), 1, 1, len(actions))
+    
     y_test = np.array(y_data[split_position:])
+    y_test = y_test.reshape(len(y_test), 1, 1, len(actions))
+    
+    print("y_train.shape", y_train.shape)
+    print("y_test.shape", y_test.shape)
 
     write_to_training_log(str(len(x_train) + len(x_test)))
 
@@ -417,7 +437,7 @@ draw_environment.initialized = False
 
 def main():
 
-    model = learn_to_play(50)
+    model = learn_to_play(100)
     play_game_using_model(model)
 
 
