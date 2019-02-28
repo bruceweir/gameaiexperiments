@@ -5,10 +5,14 @@ import random
 import os.path
 import matplotlib.pyplot as plt
 import numpy as np
+import csv
+import copy
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.callbacks import TensorBoard, EarlyStopping
-from tensorflow.python.keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten
-from tensorflow.python.keras.models import Sequential, load_model
+from tensorflow.python.keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten, Activation, Input, concatenate
+from tensorflow.python.keras.models import Sequential, load_model, Model
+from tensorflow.python.keras import optimizers
+
 """
 Created on Fri Sep  8 10:01:42 2017
 
@@ -44,6 +48,8 @@ if draw_graphics_with_matplot:
 
 np.set_printoptions(edgeitems=30, linewidth=100000, formatter=dict(float=lambda x: "%.3g" % x))
 
+random.seed(time.time())
+
 actions = ['left', 'right', 'up', 'down']
 
 width = 5
@@ -56,11 +62,17 @@ tensorBoard = TensorBoard(log_dir='./log/%d' % num_files,
                           histogram_freq=1, write_graph=True, write_images=True)
 earlyStopping = EarlyStopping(patience=3)
 
+success_score = 1.0
+collision_score = -1.0
+failure_to_finish_score = 0.0
+
+trial_results = [['Collisions','Failures','Successes']]
+
 if os.path.exists('gameslog.txt'):
     os.remove('gameslog.txt')
 
 
-def learn_to_play(max_training_runs=100, model_file=None):
+def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experience_Replay=True):
 
     (player_position, target_position) = generate_start_positions()
 
@@ -80,6 +92,8 @@ def learn_to_play(max_training_runs=100, model_file=None):
         model = load_model(model_file)
         epsilon_greedy = 0.01
 
+    best_test_score = 0.0
+
     n_games = 0
 
     n_training_runs = 0
@@ -87,16 +101,22 @@ def learn_to_play(max_training_runs=100, model_file=None):
     n_turns_in_this_game = 0
 
     number_of_games_to_play_before_training_run = 50
+
     run = True
 
     while run:
+
+        terminate_game = False
+        record_game = True
+        generate_Hindsight_Experience_Replay_episode = False
+
         # pick an action to perform
 
         action, model_q_predictions = choose_action(environment, model, epsilon_greedy)
         previous_environment = np.copy(environment)
 
-        # update the state of the environment, and return a score and (if the agent reaches
-        # the target, or has completed its max number of steps) a termination trigger
+        #  update the state of the environment, and return a score and (if the agent reaches
+        #  the target, or has completed its max number of steps) a termination trigger
         player_position, terminate_game, score = perform_action(player_position, target_position, action)
 
         environment = make_environment(player_position, target_position)
@@ -104,23 +124,42 @@ def learn_to_play(max_training_runs=100, model_file=None):
         # draw_array(environment)
 
         # record the move that was taken
-        store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
+        loop_detected = store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
 
         n_turns_in_this_game += 1
 
-        if n_turns_in_this_game == 25:
+        if n_turns_in_this_game == 10:
+
             terminate_game = True
-            score = -0.5
-            print("***********Failed************")
+
+            if use_Hindsight_Experience_Replay:
+                generate_Hindsight_Experience_Replay_episode = True
+             #else:
+               #  print("***********Failed************")
+               # record_game = False
 
         if terminate_game:
 
-            print('Completed game ', n_games, ' in ',
-                  n_turns_in_this_game, ' steps.')
+            print('Completed game ', n_games, ' in ', n_turns_in_this_game, ' steps.')
+
+            if generate_Hindsight_Experience_Replay_episode:
+
+                #print("Generating Hindsight Experience Replay episode")
+                copy_of_game_memory = copy.deepcopy(game_memory)
+
+                hindsight_memory = generate_Hindsight_memory(copy_of_game_memory, player_position)
+
+                update_q_values_for_this_game(success_score, hindsight_memory)
+
+                replay_memory.append(hindsight_memory[:])
+
             # go backwards through the game history and update the q_values to
             # reflect the score received
-            update_q_values_for_this_game(score, game_memory)
-            replay_memory.append(game_memory[:])
+
+            if record_game:
+                update_q_values_for_this_game(score, game_memory)
+                replay_memory.append(game_memory[:])
+
             game_memory = []
 
             (player_position, target_position) = generate_start_positions()
@@ -136,13 +175,24 @@ def learn_to_play(max_training_runs=100, model_file=None):
                       (n_training_runs, epsilon_greedy))
                 train_network(model, replay_memory)
 
-                plot_training_log()
+                # plot_training_log()
 
                 replay_memory = []
                 n_games = 0
                 n_training_runs += 1
-                # seems to help if this is down to < 0.05 by the final training run
-                epsilon_greedy = max([epsilon_greedy - 0.02, 0.0001])
+
+                epsilon_greedy = max([epsilon_greedy - 0.02, 0.1])
+
+                trial_result = test_model_performance(model, 100, 20)
+                trial_results.extend([[trial_result['Collisions'], trial_result['Failures'], trial_result['Successes']]])
+                write_as_csv("trial_results.csv", trial_results)
+
+                test_score = trial_result['Successes'] / 100.0
+
+                if test_score > best_test_score:
+                    print("New best score: ", test_score)
+                    best_test_score = test_score
+                    model.save('best_model.h5')
 
         if n_training_runs == max_training_runs:
             run = False
@@ -166,9 +216,9 @@ def make_environment(player_position, target_position):
 
     environment = np.zeros((width, height))
 
-    environment[player_position[0]][player_position[1]] = 1
-
     environment[target_position[0]][target_position[1]] = -1
+
+    environment[player_position[0]][player_position[1]] = 1
 
     return environment
 
@@ -185,15 +235,33 @@ def draw_array(environment):
 
 def create_neural_network():
 
-    model = Sequential()
-    model.add(Conv2D(filters=12, kernel_size=(width, height), input_shape=(width, height, 1), activation='tanh'))
-    
-    #model.add(Dense(height*width/3, input_shape=(height*width,), activation='elu'))
-    model.add(Dense(height*width/4, input_shape=(height*width,), activation='tanh'))
-    model.add(Dropout(rate=0.2))
-    model.add(Dense(len(actions), activation='tanh'))
-    model.compile(optimizer='adam',
-                  loss='mean_squared_error', metrics=[])
+    input_layer = Input(shape=(width*height,))
+
+    conv_side = Reshape((width, height, 1))(input_layer)
+    conv_side = Conv2D(filters=16, kernel_size=(2, 2), activation="linear")(conv_side)
+    conv_side = Flatten()(conv_side)
+
+    linear_side = Dense(height*width, activation='linear')(input_layer)
+    linear_side = Dense(height*width, activation='linear')(linear_side)
+
+    concatenated = concatenate([conv_side, linear_side])
+
+    final = Dense(len(actions), activation='linear')(concatenated)    
+
+    model = Model(inputs=input_layer, outputs=final)
+
+    model.compile(optimizer='adam', loss='logcosh', metrics=[])
+
+    # model = Sequential()
+
+    # model.add(Dense((height)*(width), activation='linear', input_shape=(width*height,)))
+    # model.add(Dense((height)*(width), activation='linear'))
+    # model.add(Dense((height)*(width), activation='linear'))
+    # model.add(Dropout(rate=0.2))
+    # model.add(Dense(len(actions), activation='linear'))
+
+    # model.compile(optimizer='adam',
+    #              loss='mean_squared_error', metrics=[])
 
     return model
 
@@ -204,9 +272,10 @@ def choose_action(environment, model, epsilon_greedy=0.0):
 
     action = 0
     # model_prediction = list(model.predict(np.array([environment.reshape(width, height, 1)]))[0][0][0])
-    model_prediction = model.predict(environment.reshape(1, width, height, 1))[0][0][0]  # np.array([environment.reshape(width, height, 1)]))[0])
 
-    if random.random() > epsilon_greedy:
+    model_prediction = model.predict(np.array([np.reshape(environment, (width*height))]))[0]  # np.array([environment.reshape(width, height, 1)]))[0])
+
+    if random.random() >= epsilon_greedy:
         action = np.argmax(model_prediction)
     else:
         action = random.choice(range(len(actions)))
@@ -220,44 +289,44 @@ def choose_action(environment, model, epsilon_greedy=0.0):
 def perform_action(player_position, target_position, action):
 
     termination = False
-    score = 0
+    score = failure_to_finish_score
 
     if action == 0:
         if player_position[1] > 0:  # left
             player_position[1] -= 1
         else:
-            score = -1
-            print('************COLLISION*****************')
+            score = collision_score
+            # print('************COLLISION*****************')
             termination = True
 
     elif action == 1:
         if player_position[1] < width-1:  # right
             player_position[1] += 1
         else:
-            score = -1
-            print('************COLLISION*****************')            
+            score = collision_score
+            # print('************COLLISION*****************')      
             termination = True
 
     elif action == 2:
         if player_position[0] > 0:  # up
             player_position[0] -= 1
         else:
-            score = -1
-            print('************COLLISION*****************')
+            score = collision_score
+            # print('************COLLISION*****************')
             termination = True
 
     elif action == 3:
         if player_position[0] < height-1:  # down
             player_position[0] += 1
         else:
-            score = -1
-            print('************COLLISION*****************')
+            score = collision_score
+            # print('************COLLISION*****************')
             termination = True
 
     if player_position == target_position:
         termination = True
-        print('!!!!!!!!!SUCCESS!!!!!!!!!')
-        score = 1
+        # print('!!!!!!!!!SUCCESS!!!!!!!!!')
+        score = success_score
 
     return player_position, termination, score
 
@@ -266,15 +335,26 @@ def perform_action(player_position, target_position, action):
 Remember the state for the current step in the game, the action that was taken
 from here, and the prediction that the model made for the q_values (action choices)
 (if the agent moved at random)
+
+Check that the agent is not in a repeating loop
 """
 
 
 def store_action_in_game_memory(environment, action, predicted_q_values, game_memory):
     state_result = {}
-    state_result['state'] = np.copy(environment)
+    state_result['state'] = np.copy(environment.reshape(height*width))
     state_result['action'] = action
     state_result['Q_values'] = list(predicted_q_values[:])
     game_memory.append(state_result)
+
+    loop_detected = False
+
+    if len(game_memory) < 3:
+        loop_detected = False
+    elif np.array_equal(game_memory[-1]['state'], game_memory[-3]['state']):
+            loop_detected = True
+
+    return loop_detected
 
 
 """Go backwards through the game history, updating the q_value for the action
@@ -286,20 +366,55 @@ of the game
 """
 
 
-def update_q_values_for_this_game(score, game_memory):
+def update_q_values_for_this_game(score, game_steps):
 
     discount_rate = 0.9
 
-    gamma = 0.33
+    gamma = .33
 
-    for x in reversed(range(len(game_memory))):
-        action = game_memory[x]['action']
+    for x in reversed(range(len(game_steps))):
+        action = game_steps[x]['action']
 
         # print(game_memory[x])
 
-        game_memory[x]['Q_values'][action] = (
-            gamma * score) + ((1.0-gamma) * game_memory[x]['Q_values'][action])
+        game_steps[x]['Q_values'][action] = (gamma * score) + ((1.0-gamma) * game_steps[x]['Q_values'][action])
         score *= discount_rate
+
+
+def generate_Hindsight_memory(game_memory_copy, final_player_position):
+
+    # assume that the final_player_position was actually where we
+    # wanted him to be all along
+
+    fake_target_position = final_player_position
+
+    hindsight_memory = []
+
+    for step in game_memory_copy:
+        try:
+            player_position = get_player_position_from_environment(step['state'])
+            invented_state = make_environment(player_position, fake_target_position)
+
+            hindsight_step = {'state': np.copy(invented_state.reshape(height*width)), 'action': step['action'], 'Q_values': step['Q_values']}
+            hindsight_memory.append(hindsight_step)
+        except ValueError:
+            print("Player not found in environment. This is probably an error")
+            continue
+
+    return hindsight_memory
+
+
+def get_player_position_from_environment(environment):
+
+    if environment.shape != (height, width):
+        environment = environment.reshape((height, width))
+
+    position = np.where(environment == 1)
+    
+    if len(position[0]) == 0:
+        raise ValueError("Player not found")
+
+    return (position[0][0], position[1][0]) 
 
 
 def train_network(model, replay_memory):
@@ -332,20 +447,13 @@ def create_training_data(replay_memory):
 
     x_train = np.array(x_data[:split_position])
     print("x_train.shape: ", x_train.shape)
-    x_train = x_train.reshape(len(x_train), width, height, 1)
-    print("x_train.shape: ", x_train.shape)
-    
+
     x_test = np.array(x_data[split_position:])
     print("x_test.shape: ", x_test.shape)
-    x_test = x_test.reshape(len(x_test), width, height, 1)
-    print("x_test.shape: ", x_test.shape)
-    
+
     y_train = np.array(y_data[:split_position])
-    y_train = y_train.reshape(len(y_train), 1, 1, len(actions))
-    
     y_test = np.array(y_data[split_position:])
-    y_test = y_test.reshape(len(y_test), 1, 1, len(actions))
-    
+
     print("y_train.shape", y_train.shape)
     print("y_test.shape", y_test.shape)
 
@@ -361,6 +469,13 @@ def write_to_training_log(line):
     f.close()
 
 
+def write_as_csv(logfilename, results):
+
+    with open(logfilename, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerows(results)
+
+
 def plot_training_log():
 
     games_played = np.loadtxt('gameslog.txt')
@@ -374,6 +489,49 @@ def plot_training_log():
     else:
         if len(games_played.shape) > 0:
             termplot.plot(games_played)
+
+
+def test_model_performance(model, number_of_trials, turn_limit=20):
+
+    collisions = 0.0
+    successes = 0.0
+    failures = 0.0
+
+    for _ in range(number_of_trials):
+
+        (player_position, target_position) = generate_start_positions()
+        environment = make_environment(player_position, target_position)
+
+        terminate_game = False
+        turns_played = 0
+        score = 0
+
+        while not terminate_game and turns_played < turn_limit:
+
+            action, model_q_predictions = choose_action(environment, model)
+            previous_environment = np.copy(environment)
+
+            #  update the state of the environment, and return a score and (if the agent reaches
+            #  the target, or has completed its max number of steps) a termination trigger
+            player_position, terminate_game, score = perform_action(player_position, target_position, action)
+
+            environment = make_environment(player_position, target_position)
+
+            turns_played += 1
+
+        if score == collision_score:
+            # print("Game ended by collision")
+            collisions += 1
+        elif score == failure_to_finish_score:
+            # print("Game ended by failure")
+            failures += 1
+        elif score == success_score:
+            # print("Game ended by success")
+            successes += 1
+
+    return {"Collisions": collisions,
+            "Failures": failures,
+            "Successes": successes}
 
 
 def play_game_using_model(model):
@@ -437,8 +595,8 @@ draw_environment.initialized = False
 
 def main():
 
-    model = learn_to_play(100)
-    play_game_using_model(model)
+    model = learn_to_play(300, None, False)
+    # play_game_using_model(model)
 
 
 if __name__ == "__main__":
