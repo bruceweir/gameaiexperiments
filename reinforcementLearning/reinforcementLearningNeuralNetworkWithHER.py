@@ -66,7 +66,7 @@ success_score = 1.0
 collision_score = -1.0
 failure_to_finish_score = 0.0
 
-trial_results = [['Collisions','Failures','Successes']]
+trial_results = [['Collisions', 'Failures', 'Successes']]
 
 if os.path.exists('gameslog.txt'):
     os.remove('gameslog.txt')
@@ -100,7 +100,7 @@ def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experien
 
     n_turns_in_this_game = 0
 
-    number_of_games_to_play_before_training_run = 50
+    number_of_games_to_play_before_training_run = 75
 
     run = True
 
@@ -134,17 +134,17 @@ def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experien
 
             if use_Hindsight_Experience_Replay:
                 generate_Hindsight_Experience_Replay_episode = True
-             #else:
-               #  print("***********Failed************")
-               # record_game = False
+            else:
+                #  print("***********Failed************")
+                record_game = False
 
         if terminate_game:
 
-            print('Completed game ', n_games, ' in ', n_turns_in_this_game, ' steps.')
+            # print('Completed game ', n_games, ' in ', n_turns_in_this_game, ' steps.')
 
             if generate_Hindsight_Experience_Replay_episode:
 
-                #print("Generating Hindsight Experience Replay episode")
+                # print("Generating Hindsight Experience Replay episode")
                 copy_of_game_memory = copy.deepcopy(game_memory)
 
                 hindsight_memory = generate_Hindsight_memory(copy_of_game_memory, player_position)
@@ -194,6 +194,8 @@ def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experien
                     best_test_score = test_score
                     model.save('best_model.h5')
 
+                print("Current score: {0}, best score: {1}".format(test_score, best_test_score))
+
         if n_training_runs == max_training_runs:
             run = False
 
@@ -238,11 +240,12 @@ def create_neural_network():
     input_layer = Input(shape=(width*height,))
 
     conv_side = Reshape((width, height, 1))(input_layer)
-    conv_side = Conv2D(filters=16, kernel_size=(2, 2), activation="linear")(conv_side)
+    conv_side = Conv2D(filters=16, kernel_size=(2, 2), padding="same", activation="tanh")(conv_side)
+    conv_side = Conv2D(filters=4, kernel_size=(2, 2), padding="same", activation="tanh")(conv_side)
     conv_side = Flatten()(conv_side)
 
-    linear_side = Dense(height*width, activation='linear')(input_layer)
-    linear_side = Dense(height*width, activation='linear')(linear_side)
+    linear_side = Dense(height*width*2, activation='tanh')(input_layer)
+    linear_side = Dense(height*width*2, activation='tanh')(linear_side)
 
     concatenated = concatenate([conv_side, linear_side])
 
@@ -423,7 +426,7 @@ def train_network(model, replay_memory):
     model.fit(x_train, y_train,
               batch_size=50,
               epochs=40,
-              verbose=True,
+              verbose=False,
               callbacks=[tensorBoard, earlyStopping],
               validation_data=(x_test, y_test),
               shuffle=True)
@@ -446,18 +449,13 @@ def create_training_data(replay_memory):
     split_position = int(.9 * len(y_data))
 
     x_train = np.array(x_data[:split_position])
-    print("x_train.shape: ", x_train.shape)
 
     x_test = np.array(x_data[split_position:])
-    print("x_test.shape: ", x_test.shape)
 
     y_train = np.array(y_data[:split_position])
     y_test = np.array(y_data[split_position:])
 
-    print("y_train.shape", y_train.shape)
-    print("y_test.shape", y_test.shape)
-
-    write_to_training_log(str(len(x_train) + len(x_test)))
+#    write_to_training_log(str(len(x_train) + len(x_test)))
 
     return x_train, y_train, x_test, y_test
 
