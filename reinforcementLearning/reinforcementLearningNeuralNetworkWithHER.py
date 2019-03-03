@@ -12,6 +12,7 @@ from tensorflow.python.keras.callbacks import TensorBoard, EarlyStopping
 from tensorflow.python.keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten, Activation, Input, concatenate
 from tensorflow.python.keras.models import Sequential, load_model, Model
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import activations
 
 """
 Created on Fri Sep  8 10:01:42 2017
@@ -237,15 +238,17 @@ def draw_array(environment):
 
 def create_neural_network():
 
+    mid_layer_activation = "elu"
+
     input_layer = Input(shape=(width*height,))
 
     conv_side = Reshape((width, height, 1))(input_layer)
-    conv_side = Conv2D(filters=16, kernel_size=(2, 2), padding="same", activation="tanh")(conv_side)
-    conv_side = Conv2D(filters=4, kernel_size=(2, 2), padding="same", activation="tanh")(conv_side)
+    conv_side = Conv2D(filters=16, kernel_size=(2, 2), padding="same", activation=mid_layer_activation)(conv_side)
+    conv_side = Conv2D(filters=4, kernel_size=(2, 2), padding="same", activation=mid_layer_activation)(conv_side)
     conv_side = Flatten()(conv_side)
 
-    linear_side = Dense(height*width*2, activation='tanh')(input_layer)
-    linear_side = Dense(height*width*2, activation='tanh')(linear_side)
+    linear_side = Dense(height*width*2, activation=mid_layer_activation)(input_layer)
+    linear_side = Dense(height*width*2, activation=mid_layer_activation)(linear_side)
 
     concatenated = concatenate([conv_side, linear_side])
 
