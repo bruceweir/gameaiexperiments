@@ -8,6 +8,7 @@ import numpy as np
 import csv
 import copy
 import argparse
+import math
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.callbacks import TensorBoard, EarlyStopping
 from tensorflow.python.keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten, Activation, Input, concatenate
@@ -51,8 +52,9 @@ parser.add_argument('-gl', '--game_step_limit', dest="game_step_limit", help='Ma
 parser.add_argument('-eps', '--epsilon_start', dest="epsilon", help='Initial value of epsilon (chance of taking greedy action)', type=float, default=1.0)
 parser.add_argument('-epd', '--epsilon_decay', dest="epsilon_decay", help='Reduce epsilon by this much after each training run', type=float, default=0.02)
 parser.add_argument('-epm', '--epsilon_minimum', dest="epsilon_minimum", help='Minimum limit of epsilon during training process', type=float, default=0.1)
+parser.add_argument('-xs', '--end_on_success', dest="end_on_success", help='End the training as soon as the agent achieves a 100 percent success rate', action='store_true', default=False)
 parser.add_argument('-e', '--experiment_name', dest="experiment_name", help='Name of experiment. Results file will be saved as [experiment_name].csv. Best model file will be saved as [experiment_name].h5', default="experiment")
-parser.add_argument('-her', '--hindsight_experience_replay', dest="hindsight_experience_replay", help='Use Hindsight Experience Replay to generate artificial games when they fail to reach a termination goal', default=False)
+parser.add_argument('-her', '--hindsight_experience_replay', dest="hindsight_experience_replay", help='Use Hindsight Experience Replay to generate artificial games when they fail to reach a termination goal', action='store_true', default=False)
 parser.add_argument('-m', '--model_file', dest="model_file", help='Path to a model file. If used then the game is played using the agent contained in the model file rather than training a new agent', default=None)
 
 args = parser.parse_args()
@@ -216,8 +218,12 @@ def learn_to_play(max_training_runs=100, use_Hindsight_Experience_Replay=True):
                     print("New best score: ", test_score)
                     best_test_score = test_score
                     model.save(args.experiment_name+".h5")
-
+                    
                 print("Current score: {0}, best score: {1}".format(test_score, best_test_score))
+
+                if(args.end_on_success):
+                    if math.isclose(test_score, 1.00):
+                        quit()
 
         if n_training_runs == max_training_runs:
             run = False
@@ -264,7 +270,7 @@ def create_neural_network():
 
     input_layer = Input(shape=(width*height,))
 
-    conv_side = Reshape((width, height, 1))(input_layer)
+    conv_side = Reshape((width, height, 1), name='play_area_shape')(input_layer)
     conv_side = Conv2D(filters=16, kernel_size=(2, 2), padding="same", activation=mid_layer_activation)(conv_side)
     conv_side = Conv2D(filters=4, kernel_size=(2, 2), padding="same", activation=mid_layer_activation)(conv_side)
     conv_side = Flatten()(conv_side)
@@ -516,6 +522,12 @@ def plot_training_log():
 
 def test_model_performance(model, number_of_trials, turn_limit=20):
 
+    global width
+    global height
+
+    width = model.get_layer('play_area_shape').output_shape[1]
+    height = model.get_layer('play_area_shape').output_shape[2]
+
     collisions = 0.0
     successes = 0.0
     failures = 0.0
@@ -570,7 +582,14 @@ def play_game_using_model(model):
         f.show()
         plt.ion()
 
+    global width
+    global height
+
+    width = model.get_layer('play_area_shape').output_shape[1]
+    height = model.get_layer('play_area_shape').output_shape[2]
+
     terminate_game = False
+
     (player_position, target_position) = generate_start_positions()
     environment = make_environment(player_position, target_position)
 
