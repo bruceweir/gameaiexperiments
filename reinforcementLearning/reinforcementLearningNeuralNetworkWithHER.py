@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import csv
 import copy
+import argparse
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.callbacks import TensorBoard, EarlyStopping
 from tensorflow.python.keras.layers import Dense, Conv2D, MaxPooling2D, Reshape, Dropout, Flatten, Activation, Input, concatenate
@@ -36,8 +37,27 @@ This will train a neural network to search for a square in the play area
 """
 """
 WORK IN PROGRESS - NOT YET FULLY FUNCTIONAL
+https://youtu.be/ggqnxyjaKe4?t=2252
 """
 
+parser = argparse.ArgumentParser(description='Grid-based reinforcement learning experiment. Can the agent find the target given a play area of a particular size?',
+                                 formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+parser.add_argument('-x', '--width', dest='width', help='Play area width', type=int, default=5)
+parser.add_argument('-y', '--height', dest='height', help='Play area height', type=int, default=5)
+parser.add_argument('-t', '--training_runs', dest="max_training_runs", help='Number of training runs', type=int, default=100)
+parser.add_argument('-g', '--games_per_training_run', dest="games_per_training_run", help='Number of games to play with an agent before training the network on his results', type=int, default=75)
+parser.add_argument('-gl', '--game_step_limit', dest="game_step_limit", help='Maximum number of steps before a game is terminated', type=int, default=25)
+parser.add_argument('-eps', '--epsilon_start', dest="epsilon", help='Initial value of epsilon (chance of taking greedy action)', type=float, default=1.0)
+parser.add_argument('-epd', '--epsilon_decay', dest="epsilon_decay", help='Reduce epsilon by this much after each training run', type=float, default=0.02)
+parser.add_argument('-epm', '--epsilon_minimum', dest="epsilon_minimum", help='Minimum limit of epsilon during training process', type=float, default=0.1)
+parser.add_argument('-e', '--experiment_name', dest="experiment_name", help='Name of experiment. Results file will be saved as [experiment_name].csv. Best model file will be saved as [experiment_name].h5', default="experiment")
+parser.add_argument('-her', '--hindsight_experience_replay', dest="hindsight_experience_replay", help='Use Hindsight Experience Replay to generate artificial games when they fail to reach a termination goal', default=False)
+parser.add_argument('-m', '--model_file', dest="model_file", help='Path to a model file. If used then the game is played using the agent contained in the model file rather than training a new agent', default=None)
+
+args = parser.parse_args()
+
+print(vars(args))
 # set this to False if you are running on a terminal with no graphic support
 draw_graphics_with_matplot = False
 
@@ -53,8 +73,8 @@ random.seed(time.time())
 
 actions = ['left', 'right', 'up', 'down']
 
-width = 5
-height = 5
+width = args.width
+height = args.height
 
 path = './log'
 num_files = len(os.listdir(path))
@@ -73,7 +93,7 @@ if os.path.exists('gameslog.txt'):
     os.remove('gameslog.txt')
 
 
-def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experience_Replay=True):
+def learn_to_play(max_training_runs=100, use_Hindsight_Experience_Replay=True):
 
     (player_position, target_position) = generate_start_positions()
 
@@ -81,18 +101,18 @@ def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experien
 
     environment = make_environment(player_position, target_position)
     # He will move entirely randomly at first
-    epsilon_greedy = 1
+    epsilon_greedy = args.epsilon
+
+    epsilon_decay = args.epsilon_decay
+
+    epsilon_minimum = args.epsilon_minimum
     # Each step in a single game is recorded in the game_memory
     game_memory = []
     # The replay memory holds the steps of every game until a training run is needed
     replay_memory = []
 
-    if model_file is None:
-        model = create_neural_network()
-    else:
-        model = load_model(model_file)
-        epsilon_greedy = 0.01
-
+    model = create_neural_network()
+    
     best_test_score = 0.0
 
     n_games = 0
@@ -101,7 +121,9 @@ def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experien
 
     n_turns_in_this_game = 0
 
-    number_of_games_to_play_before_training_run = 75
+    game_turn_limit = args.game_step_limit
+
+    number_of_games_to_play_before_training_run = args.games_per_training_run
 
     run = True
 
@@ -129,7 +151,7 @@ def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experien
 
         n_turns_in_this_game += 1
 
-        if n_turns_in_this_game == 10:
+        if n_turns_in_this_game == game_turn_limit:
 
             terminate_game = True
 
@@ -182,18 +204,18 @@ def learn_to_play(max_training_runs=100, model_file=None, use_Hindsight_Experien
                 n_games = 0
                 n_training_runs += 1
 
-                epsilon_greedy = max([epsilon_greedy - 0.02, 0.1])
+                epsilon_greedy = max([epsilon_greedy - epsilon_decay, epsilon_minimum])
 
                 trial_result = test_model_performance(model, 100, 20)
                 trial_results.extend([[trial_result['Collisions'], trial_result['Failures'], trial_result['Successes']]])
-                write_as_csv("trial_results.csv", trial_results)
+                write_as_csv(args.experiment_name+".csv", trial_results)
 
                 test_score = trial_result['Successes'] / 100.0
 
                 if test_score > best_test_score:
                     print("New best score: ", test_score)
                     best_test_score = test_score
-                    model.save('best_model.h5')
+                    model.save(args.experiment_name+".h5")
 
                 print("Current score: {0}, best score: {1}".format(test_score, best_test_score))
 
@@ -596,8 +618,11 @@ draw_environment.initialized = False
 
 def main():
 
-    model = learn_to_play(300, None, False)
-    # play_game_using_model(model)
+    if args.model_file is None:
+        learn_to_play(args.max_training_runs, args.hindsight_experience_replay)
+    else:
+        model = load_model(args.model_file)
+        play_game_using_model(model)
 
 
 if __name__ == "__main__":
