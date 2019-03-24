@@ -87,6 +87,7 @@ earlyStopping = EarlyStopping(patience=3)
 
 success_score = 1.0
 collision_score = -1.0
+step_score = 0.0
 failure_to_finish_score = 0.0
 
 trial_results = [['Collisions', 'Failures', 'Successes']]
@@ -142,14 +143,14 @@ def learn_to_play(max_training_runs=100, use_Hindsight_Experience_Replay=True):
         
         #  update the state of the environment, and return a score and (if the agent reaches
         #  the target, or has completed its max number of steps) a termination trigger
-        player_position, terminate_game, score = perform_action(player_position, target_position, action)
+        player_position, terminate_game, reward = perform_action(player_position, target_position, action)
         
         environment = make_environment(player_position, target_position)
 
         # draw_array(environment)
 
         # record the move that was taken
-        loop_detected = store_action_in_game_memory(previous_environment, action, model_q_predictions, game_memory)
+        loop_detected = store_action_in_game_memory(previous_environment, action, reward, model_q_predictions, game_memory)
 
         n_turns_in_this_game += 1
 
@@ -159,9 +160,9 @@ def learn_to_play(max_training_runs=100, use_Hindsight_Experience_Replay=True):
 
             if use_Hindsight_Experience_Replay and random.random() > 0.5:
                 generate_Hindsight_Experience_Replay_episode = True
-            else:
+            #else:
                 #  print("***********Failed************")
-                record_game = False
+            #    record_game = False
 
         if terminate_game:
 
@@ -174,16 +175,17 @@ def learn_to_play(max_training_runs=100, use_Hindsight_Experience_Replay=True):
 
                 hindsight_memory = generate_Hindsight_memory(copy_of_game_memory)
 
-                update_q_values_for_this_game(success_score, hindsight_memory)
+                if len(hindsight_memory) > 0:
 
-                replay_memory.append(hindsight_memory[:])
+                    update_q_values_for_this_game(success_score, hindsight_memory)
+                    replay_memory.append(hindsight_memory[:])
 
             else:
-            # go backwards through the game history and update the q_values to
-            # reflect the score received
+                # go backwards through the game history and update the q_values to
+                # reflect the score received
 
                 if record_game:
-                    update_q_values_for_this_game(score, game_memory)
+                    update_q_values_for_this_game(reward, game_memory)
                     replay_memory.append(game_memory[:])
 
             game_memory = []
@@ -321,13 +323,13 @@ def choose_action(environment, model, epsilon_greedy=0.0):
 def perform_action(player_position, target_position, action):
 
     termination = False
-    score = failure_to_finish_score
+    reward = step_score
 
     if action == 0:
         if player_position[1] > 0:  # left
             player_position[1] -= 1
         else:
-            score = collision_score
+            reward = collision_score
             # print('************COLLISION*****************')
             termination = True
 
@@ -335,7 +337,7 @@ def perform_action(player_position, target_position, action):
         if player_position[1] < columns-1:  # right
             player_position[1] += 1
         else:
-            score = collision_score
+            reward = collision_score
             # print('************COLLISION*****************')      
             termination = True
 
@@ -343,7 +345,7 @@ def perform_action(player_position, target_position, action):
         if player_position[0] > 0:  # up
             player_position[0] -= 1
         else:
-            score = collision_score
+            reward = collision_score
             # print('************COLLISION*****************')
             termination = True
 
@@ -351,16 +353,16 @@ def perform_action(player_position, target_position, action):
         if player_position[0] < rows-1:  # down
             player_position[0] += 1
         else:
-            score = collision_score
+            reward = collision_score
             # print('************COLLISION*****************')
             termination = True
 
     if player_position == target_position:
         termination = True
         # print('!!!!!!!!!SUCCESS!!!!!!!!!')
-        score = success_score
+        reward = success_score
 
-    return player_position, termination, score
+    return player_position, termination, reward
 
 
 """
@@ -372,10 +374,11 @@ Check that the agent is not in a repeating loop
 """
 
 
-def store_action_in_game_memory(environment, action, predicted_q_values, game_memory):
+def store_action_in_game_memory(environment, action, reward, predicted_q_values, game_memory):
     state_result = {}
     state_result['state'] = np.copy(environment.reshape(rows*columns))
     state_result['action'] = action
+    state_result['reward_for_action'] = reward
     state_result['Q_values'] = list(predicted_q_values[:])
     game_memory.append(state_result)
 
@@ -390,11 +393,7 @@ def store_action_in_game_memory(environment, action, predicted_q_values, game_me
 
 
 """Go backwards through the game history, updating the q_value for the action
-that was made according to the utility that was gained by this action
-i.e. For the action that scored a point, the q_value is the value of
-that point. For the step just before this, the q_value is the value of
-the point multiplied by the discount_rate, and so on back to the first move
-of the game
+that was made according to the reward that was gained by this action
 """
 
 
@@ -402,32 +401,48 @@ def update_q_values_for_this_game(score, game_steps):
 
     discount_rate = 0.9
 
-    gamma = .33
+    # gamma = 0.33
+
+    learning_rate = 1.0
+
+ #   score = game_steps[-1]['reward']
+
+#    for x in reversed(range(len(game_steps))):
+#        action = game_steps[x]['action']
+
+#        game_steps[x]['Q_values'][action] = (gamma * score) + ((1.0-gamma) * game_steps[x]['Q_values'][action])
+#        score *= discount_rate
+
+    value_of_next_state = game_steps[-1]['reward_for_action']
 
     for x in reversed(range(len(game_steps))):
+    
         action = game_steps[x]['action']
-
-        # print(game_memory[x])
-
-        game_steps[x]['Q_values'][action] = (gamma * score) + ((1.0-gamma) * game_steps[x]['Q_values'][action])
-        score *= discount_rate
+        reward_for_action = game_steps[x]['reward_for_action']
+   
+        # Bellman update
+        game_steps[x]['Q_values'][action] = game_steps[x]['Q_values'][action] + (learning_rate * (reward_for_action + (discount_rate * value_of_next_state) - game_steps[x]['Q_values'][action]))
+        value_of_next_state = np.max(game_steps[x]['Q_values'])
+        discount_rate *= discount_rate
 
 
 def generate_Hindsight_memory(game_memory_copy):
 
+    if len(game_memory_copy) < 3:
+        return []
+    
     # assume that the final player position was actually where we
     # wanted him to be all along
 
     fake_target_position = get_player_position_from_environment(game_memory_copy[-1]['state'])
 
-     # print("generate_Hindsight_memory", fake_target_position)
+    # print("generate_Hindsight_memory", fake_target_position)
 
     hindsight_memory = []
+        
+    game_memory_copy[-2]['reward_for_action'] = success_score
 
-    # for step in game_memory_copy:
-    #    print('s\n', step['state'].reshape(rows, columns))
-
-    for step in game_memory_copy[:-1]:
+    for step in game_memory_copy[:-2]:
         try:
             player_position = get_player_position_from_environment(step['state'])
 
@@ -437,7 +452,7 @@ def generate_Hindsight_memory(game_memory_copy):
             # print(player_position, fake_target_position)
             invented_state = make_environment(player_position, fake_target_position)
 
-            hindsight_step = {'state': np.copy(invented_state.reshape(columns*rows)), 'action': step['action'], 'Q_values': step['Q_values']}
+            hindsight_step = {'state': np.copy(invented_state.reshape(columns*rows)), 'action': step['action'], 'Q_values': step['Q_values'], 'reward_for_action': step['reward_for_action']}
             hindsight_memory.append(hindsight_step)
 
             # print('h\n', hindsight_step['state'].reshape(rows, columns))
@@ -558,19 +573,19 @@ def test_model_performance(model, number_of_trials, turn_limit=20):
 
             #  update the state of the environment, and return a score and (if the agent reaches
             #  the target, or has completed its max number of steps) a termination trigger
-            player_position, terminate_game, score = perform_action(player_position, target_position, action)
+            player_position, terminate_game, reward = perform_action(player_position, target_position, action)
 
             environment = make_environment(player_position, target_position)
 
             turns_played += 1
 
-        if score == collision_score:
+        if reward == collision_score:
             # print("Game ended by collision")
             collisions += 1
-        elif score == failure_to_finish_score:
+        elif turns_played == turn_limit:
             # print("Game ended by failure")
             failures += 1
-        elif score == success_score:
+        elif reward == success_score:
             # print("Game ended by success")
             successes += 1
 
