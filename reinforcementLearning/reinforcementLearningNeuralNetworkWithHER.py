@@ -49,6 +49,9 @@ parser.add_argument('-ncols', '--columns', dest='columns', help='Play area width
 parser.add_argument('-t', '--training_runs', dest="max_training_runs", help='Maximum number of training runs. Ignored if -xs used.', type=int, default=100)
 parser.add_argument('-g', '--games_per_training_run', dest="games_per_training_run", help='Number of games to play with an agent before training the network on his results', type=int, default=75)
 parser.add_argument('-gl', '--game_step_limit', dest="game_step_limit", help='Maximum number of steps before a game is terminated', type=int, default=25)
+parser.add_argument('-success', '--success_score', dest="success_score", help='Score received by agent when it reaches the target', type=float, default=1.0)
+parser.add_argument('-step', '--step_score', dest="step_score", help='Score received by agent when it takes a step', type=float, default=0.0)
+parser.add_argument('-collision', '--collision_score', dest="collision_score", help='Score received by agent when it collides with an obstacle', type=float, default=-1.0)
 parser.add_argument('-eps', '--epsilon_start', dest="epsilon", help='Initial value of epsilon (chance of taking greedy action)', type=float, default=1.0)
 parser.add_argument('-epd', '--epsilon_decay', dest="epsilon_decay", help='Reduce epsilon by this much after each training run', type=float, default=0.02)
 parser.add_argument('-epm', '--epsilon_minimum', dest="epsilon_minimum", help='Minimum limit of epsilon during training process', type=float, default=0.1)
@@ -85,10 +88,9 @@ tensorBoard = TensorBoard(log_dir='./log/%d' % num_files,
                           histogram_freq=1, write_graph=True, write_images=True)
 earlyStopping = EarlyStopping(patience=3)
 
-success_score = 1.0
-collision_score = -1.0
-step_score = 0.0
-failure_to_finish_score = 0.0
+success_score = args.success_score
+collision_score = args.collision_score
+step_score = args.step_score
 
 trial_results = [['Collisions', 'Failures', 'Successes']]
 
@@ -231,6 +233,8 @@ def learn_to_play(max_training_runs=100, use_Hindsight_Experience_Replay=True):
             run = False
 
     model.save('last_model.h5')
+
+    print("Results saved to", args.experiment_name+".csv.", "Model saved to ", args.experiment_name+".h5")
     return model
 
 
